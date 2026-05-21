@@ -5,9 +5,7 @@
 
 **14 cases × 6 條件 = 84 結果點**,跨 3 個生產 Rails 專案(匿名 App-A / B / C),3 個模型對照,以 **recall-first** 評分。
 
-📊 **[線上互動報告 →](https://USERNAME.github.io/ruby_indexer_test/)**　·　📄 [完整報告 report.md](./report.md)
-
-> 部署後請把上面網址的 `USERNAME` 換成你的 GitHub 帳號。
+📊 **[線上互動報告 →](https://spenguinlui.github.io/ruby_indexer_test/)**　·　📄 [完整報告 report.md](./report.md)
 
 ---
 
