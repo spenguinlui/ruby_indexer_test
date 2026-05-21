@@ -323,17 +323,26 @@ END_SUMMARY</pre>
 
 <section id="efficiency">
   <div class="wrap">
-    <div class="sec-head"><span class="sec-num">05</span><h2>對稱誤差 & 成本效率</h2></div>
-    <p class="sub">換成「對稱誤差」(過報漏報一視同仁)時,六條件「完全對」都落在 7–8/14,差不多 —— recall-first 才把差距拉開。token 為該條件 14 題的總 output token。</p>
+    <div class="sec-head"><span class="sec-num">05</span><h2>對稱誤差 · token · 耗時</h2></div>
+    <p class="sub">換成「對稱誤差」(過報漏報一視同仁)時,六條件「完全對」都落在 7–8/14,差不多 —— recall-first 才把差距拉開。token 為該條件 14 題的總 output token;耗時為各題 wall-clock 中位數(含工具來回)。</p>
     <div class="tbl-wrap">
       <table id="effTable">
         <thead><tr>
           <th>條件</th><th class="num">完成</th><th class="num">完全對</th><th class="num">diff ≤ ±10%</th>
-          <th class="num">總 output token</th><th class="num">平均 / case</th>
+          <th class="num">總 output token</th><th class="num">平均 / case</th><th class="num">中位數耗時</th>
         </tr></thead>
         <tbody></tbody>
       </table>
     </div>
+
+    <h3 style="margin-top:32px">⏱ 中位數耗時（秒 / 題,越短越快）</h3>
+    <p class="sub" style="margin-top:-2px"><b>開 rubydex 反而讓 Claude 變慢</b>:Haiku 45s→77s、Opus 38s→71s,grep 比 rubydex 快近一倍(少了 MCP round-trip)。</p>
+    <div class="bars" id="durBars"></div>
+    <div class="callout" style="border-left-color:var(--over);background:var(--over-bg)">
+      <span class="lab" style="color:var(--over)">異常值與口徑說明</span>
+      <p>Haiku-w 的 case-2 跑了 <b>5329 秒</b>(疑似掛起 / 重試),含它平均會爆到 457s/題;上圖採<b>中位數</b>避開此干擾。跨廠商(Claude vs codex)時間因 harness / 網路不同,僅供粗略對照。</p>
+    </div>
+
     <div class="grid2" style="margin-top:22px">
       <div class="col" style="background:var(--card)">
         <h4>三個模型的角色</h4>
@@ -546,19 +555,38 @@ const recall=[
 
 // efficiency table
 const eff=[
- {name:'Haiku · +rubydex', done:13, exact:8, near:11, tok:'84.7k', avg:'6.5k'},
- {name:'Haiku · grep', done:14, exact:8, near:10, tok:'88.6k', avg:'6.3k'},
- {name:'Opus · +rubydex', done:14, exact:8, near:10, tok:'37.5k', avg:'2.7k'},
- {name:'Opus · grep', done:14, exact:7, near:11, tok:'47.0k', avg:'3.4k'},
- {name:'Codex · +rubydex', done:14, exact:8, near:11, tok:'48.9k', avg:'3.5k'},
- {name:'Codex · grep', done:14, exact:7, near:9, tok:'52.8k', avg:'3.8k'},
+ {name:'Haiku · +rubydex', done:13, exact:8, near:11, tok:'84.7k', avg:'6.5k', med:'77s'},
+ {name:'Haiku · grep', done:14, exact:8, near:10, tok:'88.6k', avg:'6.3k', med:'45s'},
+ {name:'Opus · +rubydex', done:14, exact:8, near:10, tok:'37.5k', avg:'2.7k', med:'71s'},
+ {name:'Opus · grep', done:14, exact:7, near:11, tok:'47.0k', avg:'3.4k', med:'38s'},
+ {name:'Codex · +rubydex', done:14, exact:8, near:11, tok:'48.9k', avg:'3.5k', med:'78s'},
+ {name:'Codex · grep', done:14, exact:7, near:9, tok:'52.8k', avg:'3.8k', med:'71s'},
 ];
 (function(){
   const tb=document.querySelector('#effTable tbody');
   eff.forEach(e=>{
     const tr=document.createElement('tr');
-    tr.innerHTML=`<td style="font-family:var(--mono);font-weight:500">${e.name}</td><td class="num">${e.done}</td><td class="num">${e.exact}</td><td class="num">${e.near}</td><td class="num">${e.tok}</td><td class="num">${e.avg}</td>`;
+    tr.innerHTML=`<td style="font-family:var(--mono);font-weight:500">${e.name}</td><td class="num">${e.done}</td><td class="num">${e.exact}</td><td class="num">${e.near}</td><td class="num">${e.tok}</td><td class="num">${e.avg}</td><td class="num">${e.med}</td>`;
     tb.appendChild(tr);
+  });
+})();
+
+// duration bars (median seconds, shorter = faster). width scaled to 80s reference.
+const dur=[
+ {name:'Opus · grep', s:38, cls:'win'},
+ {name:'Haiku · grep', s:45, cls:'win'},
+ {name:'Opus · +rubydex', s:71, cls:'mid'},
+ {name:'Codex · grep', s:71, cls:'mid'},
+ {name:'Haiku · +rubydex', s:77, cls:'bad'},
+ {name:'Codex · +rubydex', s:78, cls:'bad'},
+];
+(function(){
+  const wrap=document.getElementById('durBars');
+  dur.forEach((r,i)=>{
+    const row=document.createElement('div'); row.className='bar-row';
+    row.innerHTML=`<div class="lbl">${r.name}</div><div><div class="track"><div class="fill ${r.cls}" style="width:0">${r.s}s</div></div></div>`;
+    wrap.appendChild(row);
+    setTimeout(()=>{ row.querySelector('.fill').style.width=Math.min(100,r.s/80*100)+'%'; }, 120+i*80);
   });
 })();
 </script>

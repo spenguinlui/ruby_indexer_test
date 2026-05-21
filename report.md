@@ -209,6 +209,27 @@ END_SUMMARY
 | Haiku-w | 10/13 (77%) | case-1, 4A, 8 | **−27** |
 | Opus-w | 10/14 (71%) | case-1, 2, 4A, 13 | **−29** |
 
+### 4.4 執行時間(wall-clock,秒)
+
+時間為各題 wall-clock duration(含工具來回),中位數較能避開異常值。
+
+| 條件 | 中位數/題 | 平均/題 | 總時間 | 最快 | 最慢 |
+|---|---|---|---|---|---|
+| Haiku-w | 77s | 82s\* | 1071s\* | 19s | 217s\* |
+| Haiku-wo | 45s | 61s | 853s | 20s | 179s |
+| Opus-w | 71s | 89s | 1249s | 2s | 217s |
+| **Opus-wo** | **38s** | 54s | 754s | 9s | 134s |
+| Codex-w | 78s | 84s | 1175s | 30s | 172s |
+| Codex-wo | 71s | 86s | 1210s | 36s | 189s |
+
+> \* Haiku-w 的 case-2 出現 **5329 秒** 的異常值(疑似掛起/重試),已自上表平均、總時間與最慢欄排除;中位數不受影響。跨廠商(Claude vs codex)時間因 harness/網路不同,僅供粗略對照。
+
+**觀察:**
+
+1. **開 rubydex 讓 Claude 變慢** — Haiku 中位數 45s→77s、Opus 38s→71s,grep 比 rubydex 快近一倍(多打了 MCP round-trip)。
+2. **Opus-wo 最快**(中位數 38s)且 token 最省 —— grep-only 的 Opus 在速度與成本上都最划算。
+3. **rubydex 對 codex 的時間幾乎沒差**(71s↔78s),呼應「對 codex 更像加速器而非改變結果」—— 連加速都談不上。
+
 ---
 
 ## 五、結論
