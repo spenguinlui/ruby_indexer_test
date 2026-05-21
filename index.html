@@ -33,20 +33,21 @@
   .wrap{max-width:1080px; margin:0 auto; padding:0 24px}
   a{color:var(--accent); text-underline-offset:3px}
 
-  /* side floating nav */
-  .sidenav{position:fixed; left:22px; top:50%; transform:translateY(-50%); z-index:60; display:flex; flex-direction:column; gap:2px}
-  .sidenav a{display:flex; align-items:center; gap:11px; text-decoration:none; color:var(--muted);
-    padding:5px 6px; border-radius:8px; font-family:var(--mono); font-size:11.5px; line-height:1}
-  .sidenav .dot{width:9px; height:9px; border-radius:50%; border:1.6px solid var(--line-strong);
-    background:var(--paper); transition:all .2s; flex:0 0 auto}
-  .sidenav .lbl{opacity:0; transform:translateX(-5px); transition:all .2s; white-space:nowrap; pointer-events:none}
-  .sidenav a:hover{background:var(--card)}
-  .sidenav a:hover .lbl{opacity:1; transform:none}
-  .sidenav a:hover .dot{border-color:var(--accent)}
-  .sidenav a.active{color:var(--accent)}
-  .sidenav a.active .dot{background:var(--accent); border-color:var(--accent); transform:scale(1.2)}
-  .sidenav a.active .lbl{opacity:1; transform:none; font-weight:500}
-  @media(max-width:1200px){ .sidenav{display:none} }
+  /* side floating nav (frosted white card, always-on labels) */
+  .sidenav{position:fixed; left:24px; top:50%; transform:translateY(-50%); z-index:60;
+    display:flex; flex-direction:column; gap:1px;
+    background:rgba(255,255,255,.6); backdrop-filter:blur(12px) saturate(1.1); -webkit-backdrop-filter:blur(12px) saturate(1.1);
+    border:1px solid rgba(255,255,255,.8); box-shadow:0 10px 34px rgba(40,30,10,.12); border-radius:16px; padding:9px}
+  .sidenav-h{font-family:var(--mono); font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:var(--muted); padding:4px 12px 7px}
+  .sidenav a{display:flex; align-items:center; gap:10px; text-decoration:none; color:var(--muted);
+    padding:7px 14px 7px 11px; border-radius:10px; font-family:var(--mono); font-size:12px; line-height:1; white-space:nowrap; transition:background .15s,color .15s}
+  .sidenav .dot{width:6px; height:6px; border-radius:50%; background:var(--line-strong); transition:all .2s; flex:0 0 auto}
+  .sidenav a:hover{background:rgba(255,255,255,.72)}
+  .sidenav a:hover .lbl{color:var(--ink)}
+  .sidenav a.active{background:var(--accent-soft)}
+  .sidenav a.active .dot{background:var(--accent); transform:scale(1.35)}
+  .sidenav a.active .lbl{color:var(--accent); font-weight:600}
+  @media(max-width:1340px){ .sidenav{display:none} }
 
   /* ---- hero ---- */
   header.hero{padding:72px 0 40px; border-bottom:1px solid var(--line)}
@@ -219,6 +220,7 @@
 <body>
 
 <nav class="sidenav" id="sidenav" aria-label="章節導覽">
+  <div class="sidenav-h">目錄</div>
   <a href="#tldr"><span class="dot"></span><span class="lbl">摘要</span></a>
   <a href="#method"><span class="dot"></span><span class="lbl">01 方法</span></a>
   <a href="#cases"><span class="dot"></span><span class="lbl">02 手法</span></a>
