@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rubydex vs LLM 廣搜 — Ruby 程式碼搜尋 Benchmark</title>
+<meta name="description" content="14 cases × 6 條件 = 84 結果點。驗證 Rust 寫的 Ruby 語意 indexer 能否讓 LLM 更準/更省地完成『找全程式碼關聯』任務。Recall-first 評分。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#f4efe6; --card:#fbf9f4; --ink:#211f1c; --muted:#6b6358;
+    --line:#e2d9c8; --line-strong:#ccc0a8;
+    --accent:#0f766e; --accent-soft:#cfeae6;
+    --good:#15803d; --good-bg:#dcfce7; --good-line:#a7e3bc;
+    --miss:#b91c1c; --miss-bg:#fde2e2; --miss-line:#f3b4b4;
+    --over:#b45309; --over-bg:#fdeccf; --over-line:#eecb8e;
+    --mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+    --disp:'Space Grotesk',system-ui,sans-serif;
+    --body:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC",sans-serif;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0; font-family:var(--body); color:var(--ink); line-height:1.65;
+    background:
+      radial-gradient(1200px 600px at 80% -10%, #fbf6ec 0%, rgba(251,246,236,0) 60%),
+      radial-gradient(900px 500px at -10% 10%, #f1ece0 0%, rgba(241,236,224,0) 55%),
+      var(--paper);
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1080px; margin:0 auto; padding:0 24px}
+  a{color:var(--accent); text-underline-offset:3px}
+
+  /* ---- hero ---- */
+  header.hero{padding:72px 0 40px; border-bottom:1px solid var(--line)}
+  .kicker{font-family:var(--mono); font-size:12.5px; letter-spacing:.16em; text-transform:uppercase;
+    color:var(--accent); display:inline-flex; align-items:center; gap:9px}
+  .kicker::before{content:""; width:26px; height:1px; background:var(--accent)}
+  h1{font-family:var(--disp); font-weight:700; font-size:clamp(34px,5.4vw,58px);
+    line-height:1.04; letter-spacing:-.02em; margin:18px 0 0}
+  h1 em{font-style:normal; color:var(--accent)}
+  .lede{font-size:clamp(16px,2.1vw,20px); color:var(--muted); max-width:720px; margin:20px 0 0}
+  .meta{font-family:var(--mono); font-size:12.5px; color:var(--muted); margin-top:22px; display:flex; flex-wrap:wrap; gap:6px 18px}
+  .meta b{color:var(--ink); font-weight:500}
+
+  .stats{display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin:38px 0 0}
+  .stat{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px 18px 16px}
+  .stat .n{font-family:var(--disp); font-weight:700; font-size:34px; line-height:1; letter-spacing:-.02em}
+  .stat .l{font-size:12.5px; color:var(--muted); margin-top:8px}
+  .stat.accent .n{color:var(--accent)}
+
+  /* ---- section ---- */
+  section{padding:54px 0; border-bottom:1px solid var(--line)}
+  .sec-head{display:flex; align-items:baseline; gap:14px; margin:0 0 22px}
+  .sec-num{font-family:var(--mono); font-size:13px; color:var(--accent); font-weight:500}
+  h2{font-family:var(--disp); font-weight:600; font-size:clamp(23px,3.2vw,30px); letter-spacing:-.01em; margin:0}
+  h3{font-family:var(--disp); font-weight:600; font-size:18px; margin:30px 0 12px}
+  p{margin:0 0 14px}
+  .sub{color:var(--muted)}
+
+  /* tl;dr */
+  .tldr{background:linear-gradient(180deg,#15433f,#0f2f2c); color:#eafaf6; border-radius:18px;
+    padding:30px 32px; font-size:clamp(16px,2.1vw,19px); line-height:1.6}
+  .tldr .lab{font-family:var(--mono); font-size:12px; letter-spacing:.16em; text-transform:uppercase; color:#79d8c9}
+  .tldr strong{color:#fff}
+  .tldr p{margin:12px 0 0}
+  .tldr p:first-of-type{margin-top:14px}
+
+  /* callout */
+  .callout{border-left:3px solid var(--miss); background:var(--miss-bg); border-radius:0 12px 12px 0;
+    padding:16px 20px; margin:20px 0}
+  .callout .lab{font-family:var(--mono); font-size:11.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--miss); font-weight:700}
+  .callout p{margin:6px 0 0; font-size:15px}
+
+  /* tables */
+  .tbl-wrap{overflow-x:auto; border:1px solid var(--line); border-radius:14px; background:var(--card)}
+  table{border-collapse:collapse; width:100%; font-size:14px}
+  th,td{padding:11px 13px; text-align:left; border-bottom:1px solid var(--line); white-space:nowrap}
+  thead th{font-family:var(--mono); font-size:11.5px; letter-spacing:.04em; text-transform:uppercase;
+    color:var(--muted); font-weight:500; background:#f7f2e8; position:sticky; top:0}
+  tbody tr:last-child td{border-bottom:none}
+  tbody tr:hover{background:#f7f2e8}
+  td.tech{white-space:normal; min-width:200px; font-weight:500}
+  td.why{white-space:normal; min-width:230px; color:var(--muted); font-size:13px}
+  .num{font-family:var(--mono); text-align:right}
+  .gt{font-family:var(--mono); font-weight:700; text-align:right; color:var(--accent)}
+  .cid{font-family:var(--mono); font-weight:700; color:var(--ink)}
+
+  /* heatmap */
+  .hm-controls{display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin:0 0 16px}
+  .toggle{display:inline-flex; border:1px solid var(--line-strong); border-radius:10px; overflow:hidden; background:var(--card)}
+  .toggle button{font-family:var(--mono); font-size:12.5px; border:none; background:transparent; color:var(--muted);
+    padding:8px 14px; cursor:pointer}
+  .toggle button.on{background:var(--accent); color:#fff}
+  .legend{display:flex; flex-wrap:wrap; gap:6px 16px; font-family:var(--mono); font-size:11.5px; color:var(--muted); margin-left:auto}
+  .legend i{display:inline-block; width:13px; height:13px; border-radius:3px; vertical-align:-2px; margin-right:6px; border:1px solid rgba(0,0,0,.08)}
+  .hm td.cell{font-family:var(--mono); text-align:center; font-weight:500; cursor:default; min-width:62px}
+  .hm td.cell .d{font-size:10.5px; opacity:.7; display:block; margin-top:1px}
+  .hm thead th.cond{text-align:center}
+  .c-good{background:var(--good-bg); color:var(--good)}
+  .c-miss1{background:#fdecec; color:var(--miss)}
+  .c-miss2{background:#fbd4d4; color:#7f1212}
+  .c-miss3{background:#f3a8a8; color:#5c0a0a}
+  .c-over1{background:#fdf0d8; color:var(--over)}
+  .c-over2{background:#f8dca6; color:#7c4a06}
+  .c-na{background:#efeae0; color:#a59c8c}
+
+  /* bars */
+  .bars{display:flex; flex-direction:column; gap:12px; margin-top:6px}
+  .bar-row{display:grid; grid-template-columns:130px 1fr; gap:14px; align-items:center}
+  .bar-row .lbl{font-family:var(--mono); font-size:13px; font-weight:500; text-align:right}
+  .bar-row .lbl .tag{display:block; font-size:10.5px; color:var(--muted); font-weight:400}
+  .track{position:relative; height:34px; background:#efe8db; border-radius:8px; overflow:hidden}
+  .fill{position:absolute; left:0; top:0; bottom:0; border-radius:8px; display:flex; align-items:center;
+    justify-content:flex-end; padding:0 11px; font-family:var(--mono); font-size:12.5px; color:#fff; font-weight:500;
+    min-width:42px; transition:width .9s cubic-bezier(.2,.8,.2,1)}
+  .fill.win{background:linear-gradient(90deg,#16a34a,#15803d)}
+  .fill.mid{background:linear-gradient(90deg,#d99220,#b45309)}
+  .fill.bad{background:linear-gradient(90deg,#dc4747,#b91c1c)}
+  .bar-note{font-family:var(--mono); font-size:11px; color:var(--muted); margin-top:2px}
+
+  /* two-col should/shouldn't */
+  .cols{display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:8px}
+  .col{border:1px solid var(--line); border-radius:14px; padding:20px 22px; background:var(--card)}
+  .col.yes{border-color:var(--good-line); background:linear-gradient(180deg,#f1faf3,#fbf9f4)}
+  .col.no{border-color:var(--over-line); background:linear-gradient(180deg,#fdf6ea,#fbf9f4)}
+  .col h4{font-family:var(--disp); font-size:16px; margin:0 0 12px; display:flex; align-items:center; gap:8px}
+  .col.yes h4{color:var(--good)} .col.no h4{color:var(--over)}
+  .col ul{margin:0; padding-left:18px} .col li{margin:0 0 8px; font-size:14px}
+  .col code{font-family:var(--mono); font-size:12.5px; background:#00000008; padding:1px 5px; border-radius:5px}
+
+  /* code sample */
+  pre{font-family:var(--mono); font-size:12.5px; line-height:1.6; background:#1c2522; color:#dbe9e5;
+    border-radius:12px; padding:18px 20px; overflow-x:auto; margin:14px 0}
+  pre .cm{color:#7fae9f} pre .hi{color:#ffd479}
+  code{font-family:var(--mono)}
+
+  .grid2{display:grid; grid-template-columns:1fr 1fr; gap:18px}
+  .note{font-size:13px; color:var(--muted)}
+  .pill{font-family:var(--mono); font-size:11px; padding:2px 8px; border-radius:20px; border:1px solid var(--line-strong); color:var(--muted)}
+
+  footer{padding:46px 0 70px; color:var(--muted); font-size:13px}
+  footer .anon{background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px 20px; margin:0 0 22px; font-size:13px}
+  footer code{background:#00000008; padding:1px 5px; border-radius:5px; font-size:12px}
+
+  @media(max-width:760px){
+    .stats{grid-template-columns:repeat(2,1fr)}
+    .cols,.grid2{grid-template-columns:1fr}
+    .bar-row{grid-template-columns:96px 1fr}
+    h1{font-size:34px}
+  }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <span class="kicker">Code-Search Benchmark · 2026</span>
+    <h1>Rubydex <em>vs</em> 純 LLM<br>誰找得全 Ruby 程式碼關聯?</h1>
+    <p class="lede">一個 Rust 寫的 Ruby 語意 indexer,接上 MCP 後能不能讓 LLM 更<b>準</b>、更<b>省</b>地完成「找全程式碼關聯」任務?14 個具體 Rails 撰寫手法,每題跑「有 / 無 indexer」兩輪,用 <b>recall-first</b> 評分。</p>
+    <div class="meta">
+      <span><b>14</b> cases</span>
+      <span><b>3</b> models（Claude Haiku 4.5 · Claude Opus 4.7 · GPT-5.5）</span>
+      <span><b>6</b> 條件</span>
+      <span><b>84</b> 結果點</span>
+      <span>目標：<b>3 個生產 Rails 專案</b>（匿名 App-A / B / C）</span>
+    </div>
+
+    <div class="stats">
+      <div class="stat accent"><div class="n">84</div><div class="l">結果點（14×3×2）</div></div>
+      <div class="stat"><div class="n">−1</div><div class="l">最佳條件漏掉的總 hits</div></div>
+      <div class="stat"><div class="n">−29</div><div class="l">最差條件漏掉的總 hits</div></div>
+      <div class="stat"><div class="n">0</div><div class="l">「純 LLM 找不到」的 case</div></div>
+    </div>
+  </div>
+</header>
+
+<section id="tldr">
+  <div class="wrap">
+    <div class="tldr">
+      <span class="lab">一句話結論</span>
+      <p><strong>rubydex 是「結構性查詢」的精準工具,但對 Rails 動態 / 文本場景幫不上,甚至會鎖死 Claude(case-1)。</strong></p>
+      <p>以 recall-first 衡量,「不開 rubydex 的 Haiku」和「開 rubydex 的 GPT-5.5」並列最穩 —— 各只漏 <strong>1</strong> 個 hit。</p>
+      <p>而真正的「LLM 找不到」幾乎不存在 —— 錯誤集中在<strong>過報</strong>而非漏報。<strong>純 LLM 的程式碼搜尋能力被低估了。</strong></p>
+    </div>
+  </div>
+</section>
+
+<section id="method">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">01</span><h2>怎麼測的</h2></div>
+    <p>每個 case 對應一個<b>具體可命名的 Ruby/Rails 撰寫手法</b>(不是抽象的「找東西」)。每題跑兩輪,唯一差別是「能不能用 rubydex MCP」:</p>
+    <div class="grid2">
+      <div>
+        <h3>對照設計</h3>
+        <p class="sub">with-rubydex:載入 rubydex MCP,限定只用語意工具(必要時可 Read)。<br>without-rubydex:換到獨立空目錄當 cwd,完全不載 MCP,只能 grep / Read。</p>
+        <p class="sub">兩版 prompt <b>只差第一行的工具指示</b>,任務描述與回報格式完全相同 → 確保差異只來自「能不能用 rubydex」。每題結尾要求固定格式的 <code>RESULT_SUMMARY</code> 區塊,讓腳本自動抽數字比對。</p>
+      </div>
+      <div>
+        <h3>判斷標準：Recall-first</h3>
+        <p class="sub">搜尋任務裡,<b style="color:var(--miss)">漏報(false negative)遠比過報嚴重</b> —— 漏一個 hit 等於 LLM 看不到該資訊、後續決策直接錯過(silent bug);過報只是增加 filter loading,不致命。</p>
+        <p class="sub">Ground Truth 是另外用 grep + 人工分類獨立精算的,不依賴受測跑次。</p>
+      </div>
+    </div>
+    <h3>prompt 長相（示意，已匿名）</h3>
+    <pre><span class="cm"># with / without 只差這第①行：</span>
+請用 <span class="hi">rubydex MCP</span> 工具（不要用 grep，必要時可 Read）。   <span class="cm"># with</span>
+請用 <span class="hi">Grep / Read</span>（不要呼叫任何 MCP 工具）。          <span class="cm"># without</span>
+
+<span class="cm"># ②任務（範例為虛構，非真實 case）：</span>
+列出所有真正呼叫到 <span class="hi">Account::Profile#phone</span> 的地方，分四類：
+  A) 直接 profile.phone
+  B) 透過 user.profile.phone（association traversal）
+  C) 透過 presenter delegate（隱式呼叫）
+  D) 透過 send(:phone) / public_send 動態呼叫
+每點給 file:line + 屬於哪一類。
+
+<span class="cm"># ③回報格式（可被腳本抽取）：</span>
+RESULT_SUMMARY:
+hits_total: &lt;n&gt;  hits_A: &lt;n&gt;  hits_B: &lt;n&gt;  hits_C: &lt;n&gt;  hits_D: &lt;n&gt;
+END_SUMMARY</pre>
+  </div>
+</section>
+
+<section id="cases">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">02</span><h2>14 個測試手法</h2></div>
+    <p class="sub">每題挑一個「grep 難追、AST 不展開」的 Rails 寫法。GT = 該題正確答案的 hit 數。</p>
+    <div class="tbl-wrap">
+      <table id="caseTable">
+        <thead><tr>
+          <th>#</th><th>手法</th><th>命題（要找什麼）</th><th>為什麼難追</th><th class="num">GT</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section id="heatmap">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">03</span><h2>命中數 vs Ground Truth</h2></div>
+    <p class="sub">每格是該條件的 hit 數。預設用顏色標「與 GT 的差距」:綠=完全對,紅=漏報(越深漏越多),黃=過報。recall-first 視角下紅色才是危險的。</p>
+    <div class="hm-controls">
+      <div class="toggle" id="hmToggle">
+        <button class="on" data-mode="diff">顏色：與 GT 差距</button>
+        <button data-mode="raw">顏色：關閉</button>
+      </div>
+      <div class="legend">
+        <span><i style="background:var(--good-bg)"></i>完全對</span>
+        <span><i style="background:#fbd4d4"></i>漏報</span>
+        <span><i style="background:#f8dca6"></i>過報</span>
+        <span><i style="background:#efeae0"></i>未完成</span>
+      </div>
+    </div>
+    <div class="tbl-wrap">
+      <table class="hm" id="hmTable">
+        <thead><tr>
+          <th>case</th><th class="num">GT</th>
+          <th class="cond">Haiku<br>+rubydex</th><th class="cond">Haiku<br>grep</th>
+          <th class="cond">Opus<br>+rubydex</th><th class="cond">Opus<br>grep</th>
+          <th class="cond">Codex<br>+rubydex</th><th class="cond">Codex<br>grep</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p class="note" style="margin-top:14px">小字是與 GT 的差(+ 過報 / − 漏報)。case-6 的 Haiku+rubydex 未完成,以灰底標示。</p>
+  </div>
+</section>
+
+<section id="recall">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">04</span><h2>Recall-first 排名 — 漏越少越好</h2></div>
+    <p class="sub">這是本報告最關鍵的圖。橫條 = 各條件在 14 題裡「不漏率」(hits ≥ GT 的題數);右側標注漏掉的 case 與總漏 hit 數。</p>
+    <div class="bars" id="recallBars"></div>
+    <div class="callout">
+      <span class="lab">最大反例：rubydex 工具陷阱（case-1）</span>
+      <p>has_one + delegate 鏈式是最戲劇的失敗:<b>Claude 配 rubydex(Haiku-w、Opus-w)都拿 0 hits</b>。Claude 看到 rubydex 可用就鎖死狂打 MCP,即使第一個 call 沒結果也不切回 grep。同題不開 rubydex 反而拿 25–26(接近正解 24)。rubydex 不只沒幫上忙,反而<b>鎖死 LLM 不去用更有效的工具</b>。</p>
+    </div>
+  </div>
+</section>
+
+<section id="efficiency">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">05</span><h2>對稱誤差 & 成本效率</h2></div>
+    <p class="sub">換成「對稱誤差」(過報漏報一視同仁)時,六條件「完全對」都落在 7–8/14,差不多 —— recall-first 才把差距拉開。token 為該條件 14 題的總 output token。</p>
+    <div class="tbl-wrap">
+      <table id="effTable">
+        <thead><tr>
+          <th>條件</th><th class="num">完成</th><th class="num">完全對</th><th class="num">diff ≤ ±10%</th>
+          <th class="num">總 output token</th><th class="num">平均 / case</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div class="grid2" style="margin-top:22px">
+      <div class="col" style="background:var(--card)">
+        <h4>三個模型的角色</h4>
+        <ul>
+          <li><b>Opus 4.7 (low)</b> — 最省 token(2.7k/case),但有「賭」屬性:case-8 用 44 token 命中,case-1 卻燒 2.1k 拿 0 分。</li>
+          <li><b>Haiku 4.5</b> — 最費 token(~6.4k/case),但 Haiku-grep recall 最穩(只漏 1)。</li>
+          <li><b>GPT-5.5 (codex)</b> — token 居中(3.5–3.8k),最穩定無 outlier,但系統性過報。</li>
+        </ul>
+      </div>
+      <div class="col" style="background:var(--card)">
+        <h4>Codex 與 Claude 的關鍵差異</h4>
+        <ul>
+          <li><b>不踩鎖死陷阱</b> — case-1 配 rubydex 拿 26,它會 rubydex + grep 混用,不單押一邊。</li>
+          <li><b>系統性過報</b> — 對 prompt 排除規則遵守度低(case-4/4A/7/10 普遍 +5~+27),但 recall 視角下「過報」是安全錯誤。</li>
+          <li><b>rubydex 對它影響小</b> — with/without 答案多半一致,更像「純加速器」而非「改變結果」。</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="verdict">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">06</span><h2>結論：rubydex 何時該用</h2></div>
+    <p class="sub">rubydex 的價值高度取決於「問題本質」。它是「結構性查詢」的好幫手、「文本式查詢」的負擔。</p>
+    <div class="cols">
+      <div class="col yes">
+        <h4>✓ 該用（結構性查詢）</h4>
+        <ul>
+          <li>constant / class / module 名引用 <span class="pill">case-4 · 4A · 8</span></li>
+          <li>多 namespace 同名 class 區分</li>
+          <li>短形式 ↔ FQN 同 class 識別</li>
+        </ul>
+      </div>
+      <div class="col no">
+        <h4>✕ 不該用（文本 / 動態）</h4>
+        <ul>
+          <li>字串 literal / symbol <span class="pill">case-5 · 7 · 9 · 13</span></li>
+          <li>動態組合 method 名 / class 名 <span class="pill">case-2 · 12</span></li>
+          <li>外部資源 yml / routes / locales <span class="pill">case-5 · 10 · 11</span></li>
+        </ul>
+      </div>
+    </div>
+    <p style="margin-top:22px">對 Rails-heavy codebase(動態 DSL、symbol、yaml/routes),rubydex 幫不上的場景多於幫得上的。而扣掉「rubydex 鎖死」(case-1,工具問題)與「GT 口徑爭議」(case-13)兩個非能力因素後,<b>沒有任何條件因為「找不到」而漏</b> —— LLM 的錯誤幾乎全是過報。純 LLM 的程式碼搜尋能力,沒有想像中弱。</p>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="anon">
+      <b>關於匿名化</b> — 本報告所有 <b>數字(hits / GT / token / cost / 排名)皆為真實測試結果</b>。為保護受測來源,生產專案名一律以 <code>App-A / B / C</code> 表示,業務 class / 路徑已換成中性虛構名(保留結構難度、抽掉業務語意)。深入真實程式碼的逐題 ground-truth 推導不在公開範圍。
+    </div>
+    <p>測試期間:2026-05-16(Claude 兩 model)、2026-05-20/21(codex / GPT-5.5)。對照模型:Claude Haiku 4.5 · Claude Opus 4.7 (low effort) · GPT-5.5 (codex CLI)。</p>
+    <p>方法論、完整數據與結論詳見 repo 內 <a href="./report.md">report.md</a>。</p>
+  </div>
+</footer>
+
+<script>
+const cases=[
+ {id:'1', tech:'has_one + delegate 鏈式', thesis:'找全呼叫到某 delegated 屬性的點,分 直接 / association / delegate / 動態 四類', why:'隱式 method 無 def、association traversal 需型別推論', gt:24, h:{hw:0,hwo:25,ow:0,owo:26,cw:26,cwo:33}},
+ {id:'2', tech:'AASM public_send 動態 event', thesis:'找全 AASM event 直接 + 動態呼叫,標 silent bug', why:'method 名是 runtime 字串,grep 找不到字面', gt:16, h:{hw:16,hwo:16,ow:13,owo:15,cw:16,cwo:16}},
+ {id:'3', tech:'class_eval heredoc 動態定義', thesis:'找定義位置 + 動態生成幾個 method', why:'def 在 heredoc 字串裡,AST 不展開', gt:6, h:{hw:6,hwo:6,ow:6,owo:6,cw:6,cwo:6}},
+ {id:'4', tech:'多 namespace 同名 class（給 FQN）', thesis:'給 FQN 找全引用（寬鬆 prompt）', why:'grep FQN 漏短形式、grep 短形式漏 FQN', gt:101, h:{hw:102,hwo:109,ow:102,owo:106,cw:106,cwo:106}},
+ {id:'4A', tech:'多 namespace 同名（不給 FQN）', thesis:'先列所有同名 class 再按 namespace 分組找引用', why:'grep 把所有 namespace 混在一起無法分組', gt:141, h:{hw:140,hwo:232,ow:140,owo:140,cw:151,cwo:151}},
+ {id:'5', tech:'Sidekiq YAML 字串引用 worker', thesis:'找全 worker class 引用（含 YAML config 字串）', why:'rubydex 只看 .rb,看不到 .yml', gt:1, h:{hw:1,hwo:1,ow:1,owo:2,cw:2,cwo:2}},
+ {id:'6', tech:'重開 Object monkey patch', thesis:'找定義 + 所有 callers', why:'定義在不起眼 helper,影響全 codebase', gt:3, h:{hw:null,hwo:3,ow:3,owo:3,cw:3,cwo:3}},
+ {id:'7', tech:'polymorphic source_type 自訂字串', thesis:'找全 source_type 寫入點,推對應 class,標 silent bug', why:'字串 literal 非 constant,dispatch 邏輯散落', gt:9, h:{hw:9,hwo:35,ow:9,owo:30,cw:9,cwo:36}},
+ {id:'8', tech:'Zeitwerk autoload + 短形式常數', thesis:'找全引用:FQN + 短形式 + 字串', why:'grep FQN 漏短形式,反之亦然', gt:25, h:{hw:23,hwo:25,ow:25,owo:25,cw:25,cwo:25}},
+ {id:'9', tech:'Rails callback symbol → method', thesis:'列所有 callback,分 symbol / block,驗證 method 存在', why:':foo symbol 非 constant', gt:3, h:{hw:3,hwo:3,ow:3,owo:3,cw:3,cwo:3}},
+ {id:'10', tech:'Rails i18n key tree + 動態 lookup', thesis:'找全 yml key 的 .rb / .erb 引用', why:'rubydex 不看 yml,動態 key 要推變數值', gt:4, h:{hw:5,hwo:4,ow:4,owo:4,cw:9,cwo:2}},
+ {id:'11', tech:'Rails nested resources path helper', thesis:'給 helper 找 routes 宣告 + controller#action + callers', why:'helper 無 .rb,routes 經命名規則展開', gt:3, h:{hw:3,hwo:3,ow:3,owo:3,cw:3,cwo:3}},
+ {id:'12', tech:'method_missing 轉發 inner object', thesis:'列自己 def 的 method + 推 method_missing 轉發的型別', why:'看不出哪些是轉發,要推 initializer 型別', gt:3, h:{hw:3,hwo:4,ow:11,owo:3,cw:3,cwo:3}},
+ {id:'13', tech:'Hash dispatch table（字串→class）', thesis:'找 dispatch table lookup 位置 + 類似 pattern', why:'HASH[key] 是字串 lookup,非 constant', gt:2, h:{hw:2,hwo:1,ow:1,owo:1,cw:1,cwo:1}},
+];
+const condOrder=['hw','hwo','ow','owo','cw','cwo'];
+
+// case table
+(function(){
+  const tb=document.querySelector('#caseTable tbody');
+  cases.forEach(c=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td class="cid">${c.id}</td><td class="tech">${c.tech}</td><td class="why" style="white-space:normal;min-width:240px;color:var(--ink);font-size:13px">${c.thesis}</td><td class="why">${c.why}</td><td class="gt">${c.gt}</td>`;
+    tb.appendChild(tr);
+  });
+})();
+
+// heatmap
+function cellClass(v,gt){
+  if(v===null) return 'c-na';
+  const d=v-gt;
+  if(d===0) return 'c-good';
+  if(d<0){ const a=Math.abs(d); return a<=2?'c-miss1':a<=10?'c-miss2':'c-miss3'; }
+  return d<=10?'c-over1':'c-over2';
+}
+function renderHeatmap(mode){
+  const tb=document.querySelector('#hmTable tbody'); tb.innerHTML='';
+  cases.forEach(c=>{
+    const tr=document.createElement('tr');
+    let row=`<td class="cid">case-${c.id}</td><td class="gt">${c.gt}</td>`;
+    condOrder.forEach(k=>{
+      const v=c.h[k];
+      const cls=mode==='diff'?cellClass(v,c.gt):'';
+      const disp=v===null?'—':v;
+      let d='';
+      if(v!==null && mode==='diff'){ const diff=v-c.gt; d=diff===0?'<span class="d">✓</span>':`<span class="d">${diff>0?'+':''}${diff}</span>`; }
+      row+=`<td class="cell ${cls}">${disp}${d}</td>`;
+    });
+    tr.innerHTML=row; tb.appendChild(tr);
+  });
+}
+renderHeatmap('diff');
+document.querySelectorAll('#hmToggle button').forEach(b=>{
+  b.addEventListener('click',()=>{
+    document.querySelectorAll('#hmToggle button').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on'); renderHeatmap(b.dataset.mode);
+  });
+});
+
+// recall bars
+const recall=[
+ {name:'Haiku · grep', rate:'13/14', pct:93, missed:'漏 case-13', miss:-1, cls:'win'},
+ {name:'Codex · +rubydex', rate:'13/14', pct:93, missed:'漏 case-13', miss:-1, cls:'win'},
+ {name:'Codex · grep', rate:'12/14', pct:86, missed:'漏 case-10, 13', miss:-3, cls:'win'},
+ {name:'Opus · grep', rate:'11/14', pct:79, missed:'漏 case-2, 4A, 13', miss:-3, cls:'mid'},
+ {name:'Haiku · +rubydex', rate:'10/13', pct:77, missed:'漏 case-1, 4A, 8', miss:-27, cls:'bad'},
+ {name:'Opus · +rubydex', rate:'10/14', pct:71, missed:'漏 case-1, 2, 4A, 13', miss:-29, cls:'bad'},
+];
+(function(){
+  const wrap=document.getElementById('recallBars');
+  recall.forEach((r,i)=>{
+    const row=document.createElement('div'); row.className='bar-row';
+    row.innerHTML=`<div class="lbl">${r.name}<span class="tag">${r.rate} 不漏</span></div>
+      <div><div class="track"><div class="fill ${r.cls}" style="width:0">${r.pct}%</div></div>
+      <div class="bar-note">${r.missed} · 總漏 ${r.miss} hits</div></div>`;
+    wrap.appendChild(row);
+    setTimeout(()=>{ row.querySelector('.fill').style.width=r.pct+'%'; }, 120+i*90);
+  });
+})();
+
+// efficiency table
+const eff=[
+ {name:'Haiku · +rubydex', done:13, exact:8, near:11, tok:'84.7k', avg:'6.5k'},
+ {name:'Haiku · grep', done:14, exact:8, near:10, tok:'88.6k', avg:'6.3k'},
+ {name:'Opus · +rubydex', done:14, exact:8, near:10, tok:'37.5k', avg:'2.7k'},
+ {name:'Opus · grep', done:14, exact:7, near:11, tok:'47.0k', avg:'3.4k'},
+ {name:'Codex · +rubydex', done:14, exact:8, near:11, tok:'48.9k', avg:'3.5k'},
+ {name:'Codex · grep', done:14, exact:7, near:9, tok:'52.8k', avg:'3.8k'},
+];
+(function(){
+  const tb=document.querySelector('#effTable tbody');
+  eff.forEach(e=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td style="font-family:var(--mono);font-weight:500">${e.name}</td><td class="num">${e.done}</td><td class="num">${e.exact}</td><td class="num">${e.near}</td><td class="num">${e.tok}</td><td class="num">${e.avg}</td>`;
+    tb.appendChild(tr);
+  });
+})();
+</script>
+</body>
+</html>
