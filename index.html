@@ -33,6 +33,21 @@
   .wrap{max-width:1080px; margin:0 auto; padding:0 24px}
   a{color:var(--accent); text-underline-offset:3px}
 
+  /* side floating nav */
+  .sidenav{position:fixed; left:22px; top:50%; transform:translateY(-50%); z-index:60; display:flex; flex-direction:column; gap:2px}
+  .sidenav a{display:flex; align-items:center; gap:11px; text-decoration:none; color:var(--muted);
+    padding:5px 6px; border-radius:8px; font-family:var(--mono); font-size:11.5px; line-height:1}
+  .sidenav .dot{width:9px; height:9px; border-radius:50%; border:1.6px solid var(--line-strong);
+    background:var(--paper); transition:all .2s; flex:0 0 auto}
+  .sidenav .lbl{opacity:0; transform:translateX(-5px); transition:all .2s; white-space:nowrap; pointer-events:none}
+  .sidenav a:hover{background:var(--card)}
+  .sidenav a:hover .lbl{opacity:1; transform:none}
+  .sidenav a:hover .dot{border-color:var(--accent)}
+  .sidenav a.active{color:var(--accent)}
+  .sidenav a.active .dot{background:var(--accent); border-color:var(--accent); transform:scale(1.2)}
+  .sidenav a.active .lbl{opacity:1; transform:none; font-weight:500}
+  @media(max-width:1200px){ .sidenav{display:none} }
+
   /* ---- hero ---- */
   header.hero{padding:72px 0 40px; border-bottom:1px solid var(--line)}
   .kicker{font-family:var(--mono); font-size:12.5px; letter-spacing:.16em; text-transform:uppercase;
@@ -142,6 +157,19 @@
   .gterm code{font-family:var(--mono); font-size:11.5px; background:#00000008; padding:1px 4px; border-radius:4px}
   @media(max-width:760px){ .gloss{grid-template-columns:1fr} }
 
+  /* corpus */
+  .corpus{display:grid; grid-template-columns:repeat(3,1fr); gap:14px}
+  .ccard{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:20px}
+  .ccard .capp{font-family:var(--mono); font-weight:700; color:var(--accent); font-size:15px}
+  .ccard .capp span{display:block; font-family:var(--body); font-weight:400; font-size:11.5px; color:var(--muted); margin-top:3px}
+  .ccard .cbig{font-family:var(--disp); font-weight:700; font-size:38px; line-height:1; letter-spacing:-.02em; margin:16px 0 0}
+  .ccard .cbig span{display:block; font-family:var(--body); font-weight:400; font-size:12px; color:var(--muted); margin-top:5px}
+  .ccard .cstats{display:grid; grid-template-columns:1fr 1fr; gap:8px 14px; margin:18px 0 0; padding:16px 0 0; border-top:1px solid var(--line); font-size:12.5px; color:var(--muted)}
+  .ccard .cstats b{font-family:var(--mono); color:var(--ink); font-weight:600}
+  .ccard .ccases{margin-top:15px; font-family:var(--mono); font-size:11.5px; color:var(--accent); background:var(--accent-soft); padding:5px 10px; border-radius:8px; display:inline-block}
+  .apptag{color:var(--accent); font-family:var(--mono); font-size:12px}
+  @media(max-width:760px){ .corpus{grid-template-columns:1fr} }
+
   /* bars */
   .bars{display:flex; flex-direction:column; gap:12px; margin-top:6px}
   .bar-row{display:grid; grid-template-columns:130px 1fr; gap:14px; align-items:center}
@@ -189,6 +217,18 @@
 </style>
 </head>
 <body>
+
+<nav class="sidenav" id="sidenav" aria-label="章節導覽">
+  <a href="#tldr"><span class="dot"></span><span class="lbl">摘要</span></a>
+  <a href="#method"><span class="dot"></span><span class="lbl">01 方法</span></a>
+  <a href="#cases"><span class="dot"></span><span class="lbl">02 手法</span></a>
+  <a href="#glossary"><span class="dot"></span><span class="lbl">名詞速查</span></a>
+  <a href="#corpus"><span class="dot"></span><span class="lbl">受測規模</span></a>
+  <a href="#heatmap"><span class="dot"></span><span class="lbl">03 命中</span></a>
+  <a href="#recall"><span class="dot"></span><span class="lbl">04 Recall</span></a>
+  <a href="#efficiency"><span class="dot"></span><span class="lbl">05 耗時</span></a>
+  <a href="#verdict"><span class="dot"></span><span class="lbl">06 結論</span></a>
+</nav>
 
 <header class="hero">
   <div class="wrap">
@@ -278,6 +318,43 @@ END_SUMMARY</pre>
   </div>
 </section>
 
+<section id="corpus">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">02·c</span><h2>受測 codebase 規模</h2></div>
+    <p class="sub">三個都是真實生產 Rails app(不是玩具範例),用 <code>scc</code> 量測(已套用 .gitignore)。每個 case 在對應 app 的<b>整個 codebase</b> 裡找 —— 這就是搜尋空間大小,也是各題的對比依據。</p>
+    <div class="corpus">
+      <div class="ccard">
+        <div class="capp">App-A<span>生產 Rails app</span></div>
+        <div class="cbig">144.7k<span>Ruby 程式碼行</span></div>
+        <div class="cstats">
+          <div><b>2,763</b> Ruby 檔</div><div><b>13.1k</b> YAML 行</div>
+          <div><b>4.1k</b> ERB 行</div><div><b>401k</b> 總程式碼行</div>
+        </div>
+        <div class="ccases">9 cases · 1,2,3,7,8,9,10,12,13</div>
+      </div>
+      <div class="ccard">
+        <div class="capp">App-B<span>生產 Rails app</span></div>
+        <div class="cbig">62.3k<span>Ruby 程式碼行</span></div>
+        <div class="cstats">
+          <div><b>1,438</b> Ruby 檔</div><div><b>6.2k</b> YAML 行</div>
+          <div><b>1.3k</b> ERB 行</div><div><b>293k</b> 總程式碼行</div>
+        </div>
+        <div class="ccases">3 cases · 5,6,11</div>
+      </div>
+      <div class="ccard">
+        <div class="capp">App-C<span>生產 Rails app</span></div>
+        <div class="cbig">108.2k<span>Ruby 程式碼行</span></div>
+        <div class="cstats">
+          <div><b>1,315</b> Ruby 檔</div><div><b>3.5k</b> YAML 行</div>
+          <div><b>0.8k</b> ERB 行</div><div><b>373k</b> 總程式碼行</div>
+        </div>
+        <div class="ccases">2 cases · 4,4A</div>
+      </div>
+    </div>
+    <p class="note" style="margin-top:16px">rubydex 只索引 <b>Ruby(.rb)</b>;<b>YAML / ERB 是它的盲點</b> —— case-5(worker 排程在 YAML)、case-10(i18n key 在 YAML)正是踩這個。三個 app 的 Ruby 量在 6 萬–14.5 萬行之間,grep 的搜尋空間(總程式碼行)更達 29 萬–40 萬行。量測工具:<code>scc 3.7.0</code>。</p>
+  </div>
+</section>
+
 <section id="heatmap">
   <div class="wrap">
     <div class="sec-head"><span class="sec-num">03</span><h2>命中數 vs Ground Truth</h2></div>
@@ -314,6 +391,10 @@ END_SUMMARY</pre>
     <div class="sec-head"><span class="sec-num">04</span><h2>Recall-first 排名 — 漏越少越好</h2></div>
     <p class="sub">這是本報告最關鍵的圖。橫條 = 各條件在 14 題裡「不漏率」(hits ≥ GT 的題數);右側標注漏掉的 case 與總漏 hit 數。</p>
     <div class="bars" id="recallBars"></div>
+    <div class="callout" style="border-left-color:var(--good);background:var(--good-bg)">
+      <span class="lab" style="color:var(--good)">意外：小模型贏大模型</span>
+      <p>論 recall,<b>Haiku 4.5 全面贏過 Opus 4.7</b>:Haiku-grep 13/14 不漏（−1），勝過 Opus-grep 11/14（−3）與兩個 Opus+rubydex 條件（−27 / −29）;連「完全對」也是 Haiku 8 ≥ Opus 7–8。便宜的小模型在「找全」這件事上反而更穩 —— Opus（low effort）的「賭」屬性（少探索 + case-1 鎖死）反咬一口。</p>
+    </div>
     <div class="callout">
       <span class="lab">最大反例：rubydex 工具陷阱（case-1）</span>
       <p>has_one + delegate 鏈式是最戲劇的失敗:<b>Claude 配 rubydex(Haiku-w、Opus-w)都拿 0 hits</b>。Claude 看到 rubydex 可用就鎖死狂打 MCP,即使第一個 call 沒結果也不切回 grep。同題不開 rubydex 反而拿 25–26(接近正解 24)。rubydex 不只沒幫上忙,反而<b>鎖死 LLM 不去用更有效的工具</b>。</p>
@@ -468,20 +549,24 @@ const glossary=[
 const condOrder=['hw','hwo','ow','owo','cw','cwo'];
 
 // case accordion
+const caseApp={'1':'A','2':'A','3':'A','4':'C','4A':'C','5':'B','6':'B','7':'A','8':'A','9':'A','10':'A','11':'B','12':'A','13':'A'};
+const appRuby={A:'Ruby 144.7k 行 · 2,763 檔',B:'Ruby 62.3k 行 · 1,438 檔',C:'Ruby 108.2k 行 · 1,315 檔'};
 (function(){
   const acc=document.getElementById('caseAcc');
   cases.forEach(c=>{
+    const a=caseApp[c.id];
     const item=document.createElement('div'); item.className='acc-item';
     item.innerHTML=`
       <div class="acc-head">
         <span class="cid">${c.id}</span>
-        <span class="t">${c.tech}<span class="s">${c.short}</span></span>
+        <span class="t">${c.tech}<span class="s">${c.short} · <span class="apptag">受測體 App-${a}</span></span></span>
         <span class="gtb">GT ${c.gt}</span>
         <span class="chev">▶</span>
       </div>
       <div class="acc-body">
         <div class="blk"><span class="lab find">要找什麼</span><p>${c.find}</p></div>
         <div class="blk"><span class="lab hard">為什麼難追</span><p>${c.hard}</p></div>
+        <div class="blk"><span class="lab" style="color:var(--muted)">受測 codebase</span><p>App-${a}(生產 Rails app)— ${appRuby[a]};這題在整個 codebase 裡找。</p></div>
       </div>`;
     item.querySelector('.acc-head').addEventListener('click',()=>item.classList.toggle('open'));
     acc.appendChild(item);
@@ -498,6 +583,21 @@ const condOrder=['hw','hwo','ow','owo','cw','cwo'];
     d.innerHTML=`<div class="h"><b>${x.t}</b><span class="full">${x.full}</span></div><p>${x.d}</p>`;
     g.appendChild(d);
   });
+})();
+
+// side nav scroll-spy
+(function(){
+  const links={};
+  document.querySelectorAll('.sidenav a').forEach(a=>links[a.getAttribute('href').slice(1)]=a);
+  const obs=new IntersectionObserver(entries=>{
+    entries.forEach(e=>{
+      if(e.isIntersecting){
+        Object.values(links).forEach(a=>a.classList.remove('active'));
+        if(links[e.target.id]) links[e.target.id].classList.add('active');
+      }
+    });
+  },{rootMargin:'-45% 0px -50% 0px', threshold:0});
+  Object.keys(links).forEach(id=>{ const el=document.getElementById(id); if(el) obs.observe(el); });
 })();
 
 // heatmap
