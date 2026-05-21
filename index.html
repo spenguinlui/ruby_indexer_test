@@ -107,6 +107,41 @@
   .c-over2{background:#f8dca6; color:#7c4a06}
   .c-na{background:#efeae0; color:#a59c8c}
 
+  /* accordion (cases) */
+  .acc-tools{display:flex; gap:10px; margin:0 0 14px}
+  .acc{border:1px solid var(--line); border-radius:14px; background:var(--card); overflow:hidden}
+  .acc-item{border-bottom:1px solid var(--line)}
+  .acc-item:last-child{border-bottom:none}
+  .acc-head{display:grid; grid-template-columns:40px 1fr auto 22px; gap:14px; align-items:center;
+    padding:15px 18px; cursor:pointer; user-select:none}
+  .acc-head:hover{background:#f7f2e8}
+  .acc-head .cid{font-family:var(--mono); font-weight:700; color:var(--accent); font-size:14px}
+  .acc-head .t{font-weight:600; font-size:15px}
+  .acc-head .t .s{display:block; font-weight:400; font-size:13px; color:var(--muted); margin-top:3px; line-height:1.5}
+  .acc-head .gtb{font-family:var(--mono); font-size:12px; font-weight:700; color:var(--accent);
+    background:var(--accent-soft); padding:4px 11px; border-radius:20px; white-space:nowrap}
+  .acc-head .chev{color:var(--muted); transition:transform .2s; font-size:14px; text-align:center}
+  .acc-item.open .chev{transform:rotate(90deg)}
+  .acc-body{display:none; padding:0 20px 20px 72px}
+  .acc-item.open .acc-body{display:block}
+  .acc-body .blk{margin:14px 0 0}
+  .acc-body .lab{font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; font-weight:700}
+  .acc-body .lab.find{color:var(--accent)} .acc-body .lab.hard{color:var(--over)}
+  .acc-body p{margin:5px 0 0; font-size:14.5px; line-height:1.7}
+  .acc-body code{font-family:var(--mono); font-size:12.5px; background:#00000008; padding:1px 5px; border-radius:5px}
+  .acc-body b{color:var(--ink)}
+  @media(max-width:760px){ .acc-body{padding-left:20px} .acc-head{grid-template-columns:34px 1fr 22px} .acc-head .gtb{display:none} }
+
+  /* glossary */
+  .gloss{display:grid; grid-template-columns:repeat(2,1fr); gap:12px}
+  .gterm{background:var(--card); border:1px solid var(--line); border-radius:11px; padding:13px 16px}
+  .gterm .h{display:flex; align-items:baseline; gap:8px; flex-wrap:wrap}
+  .gterm b{font-family:var(--mono); font-size:14px; color:var(--ink)}
+  .gterm .full{font-size:12px; color:var(--accent)}
+  .gterm p{margin:6px 0 0; font-size:13px; color:var(--muted); line-height:1.6}
+  .gterm code{font-family:var(--mono); font-size:11.5px; background:#00000008; padding:1px 4px; border-radius:4px}
+  @media(max-width:760px){ .gloss{grid-template-columns:1fr} }
+
   /* bars */
   .bars{display:flex; flex-direction:column; gap:12px; margin-top:6px}
   .bar-row{display:grid; grid-template-columns:130px 1fr; gap:14px; align-items:center}
@@ -227,15 +262,19 @@ END_SUMMARY</pre>
 <section id="cases">
   <div class="wrap">
     <div class="sec-head"><span class="sec-num">02</span><h2>14 個測試手法</h2></div>
-    <p class="sub">每題挑一個「grep 難追、AST 不展開」的 Rails 寫法。GT = 該題正確答案的 hit 數。</p>
-    <div class="tbl-wrap">
-      <table id="caseTable">
-        <thead><tr>
-          <th>#</th><th>手法</th><th>命題（要找什麼）</th><th>為什麼難追</th><th class="num">GT</th>
-        </tr></thead>
-        <tbody></tbody>
-      </table>
+    <p class="sub">每題挑一個「grep 難追、AST 不展開」的 Rails 寫法。<b>點任一列展開</b>「要找什麼」與「為什麼難追」的完整說明。GT = 該題正確答案的 hit 數。陌生名詞見下方 <a href="#glossary">名詞速查</a>。</p>
+    <div class="acc-tools">
+      <div class="toggle"><button id="expandAll">＋ 展開全部</button><button id="collapseAll">－ 收合全部</button></div>
     </div>
+    <div class="acc" id="caseAcc"></div>
+  </div>
+</section>
+
+<section id="glossary">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">02·b</span><h2>名詞 / 縮寫速查</h2></div>
+    <p class="sub">報告裡出現的縮寫與 Ruby / Rails 術語,一句話解釋。</p>
+    <div class="gloss" id="glossList"></div>
   </div>
 </section>
 
@@ -354,30 +393,101 @@ END_SUMMARY</pre>
 
 <script>
 const cases=[
- {id:'1', tech:'has_one + delegate 鏈式', thesis:'找全呼叫到某 delegated 屬性的點,分 直接 / association / delegate / 動態 四類', why:'隱式 method 無 def、association traversal 需型別推論', gt:24, h:{hw:0,hwo:25,ow:0,owo:26,cw:26,cwo:33}},
- {id:'2', tech:'AASM public_send 動態 event', thesis:'找全 AASM event 直接 + 動態呼叫,標 silent bug', why:'method 名是 runtime 字串,grep 找不到字面', gt:16, h:{hw:16,hwo:16,ow:13,owo:15,cw:16,cwo:16}},
- {id:'3', tech:'class_eval heredoc 動態定義', thesis:'找定義位置 + 動態生成幾個 method', why:'def 在 heredoc 字串裡,AST 不展開', gt:6, h:{hw:6,hwo:6,ow:6,owo:6,cw:6,cwo:6}},
- {id:'4', tech:'多 namespace 同名 class（給 FQN）', thesis:'給 FQN 找全引用（寬鬆 prompt）', why:'grep FQN 漏短形式、grep 短形式漏 FQN', gt:101, h:{hw:102,hwo:109,ow:102,owo:106,cw:106,cwo:106}},
- {id:'4A', tech:'多 namespace 同名（不給 FQN）', thesis:'先列所有同名 class 再按 namespace 分組找引用', why:'grep 把所有 namespace 混在一起無法分組', gt:141, h:{hw:140,hwo:232,ow:140,owo:140,cw:151,cwo:151}},
- {id:'5', tech:'Sidekiq YAML 字串引用 worker', thesis:'找全 worker class 引用（含 YAML config 字串）', why:'rubydex 只看 .rb,看不到 .yml', gt:1, h:{hw:1,hwo:1,ow:1,owo:2,cw:2,cwo:2}},
- {id:'6', tech:'重開 Object monkey patch', thesis:'找定義 + 所有 callers', why:'定義在不起眼 helper,影響全 codebase', gt:3, h:{hw:null,hwo:3,ow:3,owo:3,cw:3,cwo:3}},
- {id:'7', tech:'polymorphic source_type 自訂字串', thesis:'找全 source_type 寫入點,推對應 class,標 silent bug', why:'字串 literal 非 constant,dispatch 邏輯散落', gt:9, h:{hw:9,hwo:35,ow:9,owo:30,cw:9,cwo:36}},
- {id:'8', tech:'Zeitwerk autoload + 短形式常數', thesis:'找全引用:FQN + 短形式 + 字串', why:'grep FQN 漏短形式,反之亦然', gt:25, h:{hw:23,hwo:25,ow:25,owo:25,cw:25,cwo:25}},
- {id:'9', tech:'Rails callback symbol → method', thesis:'列所有 callback,分 symbol / block,驗證 method 存在', why:':foo symbol 非 constant', gt:3, h:{hw:3,hwo:3,ow:3,owo:3,cw:3,cwo:3}},
- {id:'10', tech:'Rails i18n key tree + 動態 lookup', thesis:'找全 yml key 的 .rb / .erb 引用', why:'rubydex 不看 yml,動態 key 要推變數值', gt:4, h:{hw:5,hwo:4,ow:4,owo:4,cw:9,cwo:2}},
- {id:'11', tech:'Rails nested resources path helper', thesis:'給 helper 找 routes 宣告 + controller#action + callers', why:'helper 無 .rb,routes 經命名規則展開', gt:3, h:{hw:3,hwo:3,ow:3,owo:3,cw:3,cwo:3}},
- {id:'12', tech:'method_missing 轉發 inner object', thesis:'列自己 def 的 method + 推 method_missing 轉發的型別', why:'看不出哪些是轉發,要推 initializer 型別', gt:3, h:{hw:3,hwo:4,ow:11,owo:3,cw:3,cwo:3}},
- {id:'13', tech:'Hash dispatch table（字串→class）', thesis:'找 dispatch table lookup 位置 + 類似 pattern', why:'HASH[key] 是字串 lookup,非 constant', gt:2, h:{hw:2,hwo:1,ow:1,owo:1,cw:1,cwo:1}},
+ {id:'1', tech:'has_one + delegate 鏈式', short:'找全會呼叫到某個「被委派出去的屬性」的地方,分四類', gt:24, h:{hw:0,hwo:25,ow:0,owo:26,cw:26,cwo:33},
+  find:'某 model 用 <code>has_one :profile</code> 建立關聯,presenter 又用 <code>delegate :phone, to: :profile</code> 把 phone 委派出去。要找出整個 codebase 裡所有最終會碰到 <code>Account::Profile#phone</code> 的點,並分成四類:(A) 直接 <code>profile.phone</code>、(B) 走關聯 <code>user.profile.phone</code>、(C) 透過 presenter 的 delegate 隱式呼叫、(D) 透過 <code>send(:phone)</code> 動態呼叫。',
+  hard:'<code>phone</code> 在 Profile 裡<b>根本沒有 <code>def phone</code></b> —— 它是 Rails 的 <code>delegate</code> 巨集在執行期動態生成的,所以 grep <code>def phone</code> 找不到。而要判斷 <code>user.profile</code> 回傳的型別是不是 Account::Profile,需要型別推論(association traversal),純文字搜尋做不到。'},
+ {id:'2', tech:'AASM public_send 動態 event', short:'找全 AASM 狀態機 event 的直接 + 動態呼叫,標出 silent bug', gt:16, h:{hw:16,hwo:16,ow:13,owo:15,cw:16,cwo:16},
+  find:'AASM 是 Ruby 狀態機 gem,狀態轉換稱為 event。要找出所有觸發 event 的呼叫,含「直接」(如 <code>order.approve!</code>)與「動態」(如 <code>order.public_send("do_#{state}!")</code>),並標出 silent bug —— 動態拼出來的 event 名其實不存在、執行到才會炸的。',
+  hard:'動態呼叫的方法名是執行期才用字串拼出來的(<code>"do_#{state}!"</code>),原始碼裡<b>根本沒有那個字面字串</b>,grep 找不到;要靠推 <code>state</code> 可能的值才知道實際會呼叫哪些 event。'},
+ {id:'3', tech:'class_eval heredoc 動態定義', short:'找出方法定義位置,以及這段 class_eval 動態生成了幾個方法', gt:6, h:{hw:6,hwo:6,ow:6,owo:6,cw:6,cwo:6},
+  find:'<code>class_eval</code> 可以把一段字串當成 class 內容在執行期執行;heredoc 是 Ruby 的多行字串寫法。要找出某方法定義在哪、以及這段 class_eval 一共動態生成了幾個方法。',
+  hard:'方法的 <code>def</code> 是寫在一個「字串」(heredoc)裡再丟給 class_eval 執行。對任何解析 <b>AST(抽象語法樹)</b>的工具來說,那只是一坨字串常數,不會被當成方法定義展開。'},
+ {id:'4', tech:'多 namespace 同名 class（給 FQN）', short:'給定 FQN,找全引用 —— 看模型會不會主動連「短形式」一起找', gt:101, h:{hw:102,hwo:109,ow:102,owo:106,cw:106,cwo:106},
+  find:'給定一個 class 的 <b>FQN(Fully Qualified Name,完整限定名稱)</b>,例如 <code>AccountsReceivable::Models::Invoice</code>,找出它在整個 codebase 的所有引用。prompt 故意寫得寬鬆,觀察模型會不會主動把「短形式」(<code>Invoice</code>)一起找進來。',
+  hard:'同一個 class 在不同地方可能用完整 FQN 或短形式引用。grep 完整 FQN 會<b>漏掉短形式</b>;grep 短形式又會<b>誤抓到其他 namespace 下的同名 class</b>。'},
+ {id:'4A', tech:'多 namespace 同名（不給 FQN）', short:'不給 FQN,先自己找出所有同名 class,再按 namespace 分組統計引用', gt:141, h:{hw:140,hwo:232,ow:140,owo:140,cw:151,cwo:151},
+  find:'這次不給 FQN。要模型先自己找出「有幾個同名 class 分散在不同 namespace」(例如 AR 和 AP 各有一個 Invoice),再分別按 namespace 分組,統計各自的引用數。',
+  hard:'多個 namespace 下有同名 class,grep 一個短名會把所有 namespace 的引用<b>混在一起</b>,無法判斷某次引用到底指哪一個 —— 需要解析每個引用所在的 namespace 上下文。'},
+ {id:'5', tech:'Sidekiq YAML 字串引用 worker', short:'找全某 worker 的引用,含寫在 YAML 排程設定裡的字串引用', gt:1, h:{hw:1,hwo:1,ow:1,owo:2,cw:2,cwo:2},
+  find:'Sidekiq 是 Ruby 的背景工作框架,worker 是執行背景工作的 class。要找出某 worker 的所有引用,包含寫在 <code>config/sidekiq.yml</code> 排程設定裡的「字串」引用。',
+  hard:'rubydex 只解析 <code>.rb</code>,<b>看不到 <code>.yml</code></b>。而這個 worker 主要是被 YAML 排程用字串引用,不是被 Ruby 程式碼直接呼叫,語意 indexer 完全看不到 —— 這題是設計來戳 indexer 盲點的。'},
+ {id:'6', tech:'重開 Object monkey patch', short:'找出加在 Object 上的方法定義,以及所有呼叫它的地方', gt:3, h:{hw:null,hwo:3,ow:3,owo:3,cw:3,cwo:3},
+  find:'monkey patch 指在執行期重新打開既有 class(連 Ruby 內建的 <code>Object</code> 都能開)加方法。要找出某個被加到 <code>Object</code> 上的方法定義在哪,以及所有 caller。',
+  hard:'因為加在 <code>Object</code> 上,<b>所有物件都會有這個方法</b>,呼叫端看起來就是普通方法呼叫,完全沒有線索指向它的定義;而定義又藏在一個不起眼的 helper 檔裡。'},
+ {id:'7', tech:'polymorphic source_type 自訂字串', short:'找全 source_type 字串寫入點,推對應 class,標出對不到 class 的 silent bug', gt:9, h:{hw:9,hwo:35,ow:9,owo:30,cw:9,cwo:36},
+  find:'polymorphic(多型)association 用一個 <code>xxx_type</code> 字串欄位記錄「對應到哪個 model」。要找出所有寫入 <code>source_type: \'&lt;字串&gt;\'</code> 的地方,推出每個字串對應哪個 class,並標出 silent bug(字串拼錯、對不到任何 class 的)。',
+  hard:'<code>source_type</code> 存的是<b>字串字面值</b>(如 <code>\'monthly_bill\'</code>),不是 Ruby 常數,不在語意 index 裡;而且字串 → class 的對應邏輯散落各處,要逐一比對才知道對不對得上。'},
+ {id:'8', tech:'Zeitwerk autoload + 短形式常數', short:'找全某常數的引用:完整 FQN + 短形式 + 字串三種寫法', gt:25, h:{hw:23,hwo:25,ow:25,owo:25,cw:25,cwo:25},
+  find:'Zeitwerk 是 Rails 的自動載入器,依「檔名 ↔ 常數名」規則自動載入,所以很多地方可以直接寫短名。要找全某常數的所有引用,涵蓋完整 FQN、短形式、以及字串形式。',
+  hard:'因為 Zeitwerk 讓短形式合法,同一常數在不同檔案<b>有的寫全名、有的寫短名</b>,grep 一種寫法就漏另一種 —— 這正是語意 indexer 該贏 grep 的場景。'},
+ {id:'9', tech:'Rails callback symbol → method', short:'列出 model 所有 callback,分 symbol / block,並驗證 symbol 指到的方法存在', gt:3, h:{hw:3,hwo:3,ow:3,owo:3,cw:3,cwo:3},
+  find:'callback 是 Rails model 的生命週期掛鉤(如 <code>before_save :foo</code>)。要列出某 model 所有 callback,分成 symbol 形式(<code>before_save :foo</code>)與 block 形式(<code>before_save { ... }</code>),並驗證 symbol 指到的方法真的存在。',
+  hard:'<code>:foo</code> 是 <b>symbol 不是常數</b>,語意 indexer 不會把「這個 symbol 綁到哪個方法」當成一條引用關係;要靠命名規則人工對應。'},
+ {id:'10', tech:'Rails i18n key tree + 動態 lookup', short:'找全某段 yml 翻譯 key 在 .rb / .erb 的引用,含動態拼出來的 key', gt:4, h:{hw:5,hwo:4,ow:4,owo:4,cw:9,cwo:2},
+  find:'i18n(國際化)把翻譯字串放在 <code>.yml</code>,用 key 取用(如 <code>t(\'users.title\')</code>)。要找全某段翻譯 key 在 <code>.rb</code> / <code>.erb</code> 裡的所有引用,含寫死的 key 與動態拼出來的 key。',
+  hard:'rubydex 不看 yml;而且動態 key(如 <code>t("users.#{section}.title")</code>)要先<b>推出 <code>section</code> 變數可能的值</b>,才知道實際指到哪個 key。'},
+ {id:'11', tech:'Rails nested resources path helper', short:'給 path helper,反推 routes 宣告 + controller#action + 所有 caller', gt:3, h:{hw:3,hwo:3,ow:3,owo:3,cw:3,cwo:3},
+  find:'path helper 是 Rails 路由自動生成的網址方法(如 <code>edit_admin_facility_path</code>)。給一個 helper 名,要找出它對應的 routes 宣告、會打到哪個 <code>controller#action</code>、以及所有呼叫這個 helper 的地方。',
+  hard:'path helper <b>沒有實際的 <code>def</code></b>(由路由系統依命名規則動態生成);routes.rb 裡也只是 <code>resources :facilities</code>,helper 名是經命名規則展開才得到的,中間沒有任何字面字串可 grep。'},
+ {id:'12', tech:'method_missing 轉發 inner object', short:'列出 class 自己 def 的方法,並推出 method_missing 轉發給哪個內部物件', gt:3, h:{hw:3,hwo:4,ow:11,owo:3,cw:3,cwo:3},
+  find:'<code>method_missing</code> 是 Ruby 在「呼叫了不存在的方法」時的攔截點,常用來把呼叫轉發給內部物件。要列出某 class 自己 <code>def</code> 的方法,並推出 <code>method_missing</code> 會把哪些呼叫轉發給內部哪個物件(要推那物件的型別)。',
+  hard:'從外部看,被轉發的方法跟自己定義的方法<b>呼叫起來一模一樣</b>,看不出哪些其實是 method_missing 轉發出去的;要推 initializer 裡那個內部物件是什麼型別才知道轉發到哪。'},
+ {id:'13', tech:'Hash dispatch table（字串→class）', short:'找出查 dispatch 表的位置,以及 codebase 裡類似的 dispatch pattern', gt:2, h:{hw:2,hwo:1,ow:1,owo:1,cw:1,cwo:1},
+  find:'dispatch table(分派表)用一個 Hash 把「字串 key」對應到「要用的 class / 邏輯」,靠 <code>HASH[key]</code> 查表決定行為。要找出查這張表的位置(<code>SOURCE_MODELS[source_type]</code>),以及 codebase 裡類似的 dispatch pattern。',
+  hard:'<code>HASH[key]</code> 是<b>字串查表</b>,key 是字串不是常數,語意 indexer 不會把它當成「引用到某個 class」的關係 —— 要靠讀懂這張表的語意才追得到。'},
+];
+const glossary=[
+ {t:'FQN', full:'Fully Qualified Name', d:'完整限定名稱 —— 帶完整命名空間的名字,如 <code>AccountsReceivable::Models::Invoice</code>;相對於只寫 <code>Invoice</code> 的「短形式」。'},
+ {t:'AST', full:'Abstract Syntax Tree', d:'抽象語法樹 —— 把程式碼解析成的樹狀結構。寫在「字串」裡的程式碼不會被展開成 AST,所以解析工具看不到。'},
+ {t:'MCP', full:'Model Context Protocol', d:'讓 LLM 接上外部工具的協定。rubydex 就是透過 MCP 把語意查詢能力提供給 Claude / codex。'},
+ {t:'GT', full:'Ground Truth', d:'正確答案基準。本報告另外用 grep + 人工分類獨立精算,用來比對各模型答得對不對。'},
+ {t:'recall / precision', full:'召回率 / 精確率', d:'recall =「該找到的」有多少被找到(漏報壓低 recall);precision =「找到的」有多少是對的(過報壓低 precision)。本報告 <b>recall-first</b> = 寧可過報也別漏。'},
+ {t:'AASM', full:'Acts As State Machine', d:'Ruby 狀態機 gem,狀態轉換稱為 event(如 <code>order.approve!</code>)。'},
+ {t:'Zeitwerk', full:'Rails 自動載入器', d:'依「檔名 ↔ 常數名」規則自動載入 class,讓很多地方可以直接寫短名、不用 require。'},
+ {t:'i18n', full:'internationalization', d:'國際化 / 多語系。翻譯字串放在 <code>.yml</code>,用 key 取用(如 <code>t(\'users.title\')</code>)。中間 18 個字母縮寫成 i18n。'},
+ {t:'silent bug', full:'靜默錯誤', d:'不會報錯、但行為已經錯掉的 bug。例如動態拼出來的方法名其實不存在,要執行到那行才炸。'},
+ {t:'monkey patch', full:'猴子補丁', d:'在執行期重新打開一個既有 class(連 Ruby 內建的 Object 都能開)加方法進去。'},
+ {t:'delegate', full:'委派', d:'Rails 巨集,把某些方法呼叫轉交給關聯物件處理 —— 被委派的方法不會有實際 <code>def</code>。'},
+ {t:'polymorphic', full:'多型關聯', d:'Rails 用一個 <code>xxx_type</code> 字串欄位記錄「對應到哪個 model」,一個關聯可指向多種型別。'},
+ {t:'callback', full:'生命週期掛鉤', d:'Rails model 在存檔 / 刪除等時機自動觸發的鉤子(如 <code>before_save :foo</code>)。'},
+ {t:'method_missing', full:'缺方法攔截', d:'Ruby 在「呼叫了不存在的方法」時的攔截點,常用來把呼叫轉發給內部物件。'},
+ {t:'heredoc', full:'多行字串語法', d:'Ruby 的多行字串寫法(<code>&lt;&lt;~SQL ... SQL</code>);裡面即使長得像程式碼,也只是字串。'},
+ {t:'class_eval', full:'執行期求值', d:'把一段字串當成 class 的內容在執行期執行,可動態定義方法。'},
+ {t:'dispatch table', full:'分派表', d:'用一個 Hash 把「字串 key」對應到「要用的 class / 邏輯」,靠 <code>HASH[key]</code> 查表決定行為。'},
+ {t:'Sidekiq', full:'背景工作框架', d:'Ruby 的 background job 框架;worker 是執行背景工作的 class,常用 YAML 設定排程。'},
 ];
 const condOrder=['hw','hwo','ow','owo','cw','cwo'];
 
-// case table
+// case accordion
 (function(){
-  const tb=document.querySelector('#caseTable tbody');
+  const acc=document.getElementById('caseAcc');
   cases.forEach(c=>{
-    const tr=document.createElement('tr');
-    tr.innerHTML=`<td class="cid">${c.id}</td><td class="tech">${c.tech}</td><td class="why" style="white-space:normal;min-width:240px;color:var(--ink);font-size:13px">${c.thesis}</td><td class="why">${c.why}</td><td class="gt">${c.gt}</td>`;
-    tb.appendChild(tr);
+    const item=document.createElement('div'); item.className='acc-item';
+    item.innerHTML=`
+      <div class="acc-head">
+        <span class="cid">${c.id}</span>
+        <span class="t">${c.tech}<span class="s">${c.short}</span></span>
+        <span class="gtb">GT ${c.gt}</span>
+        <span class="chev">▶</span>
+      </div>
+      <div class="acc-body">
+        <div class="blk"><span class="lab find">要找什麼</span><p>${c.find}</p></div>
+        <div class="blk"><span class="lab hard">為什麼難追</span><p>${c.hard}</p></div>
+      </div>`;
+    item.querySelector('.acc-head').addEventListener('click',()=>item.classList.toggle('open'));
+    acc.appendChild(item);
+  });
+  document.getElementById('expandAll').addEventListener('click',()=>document.querySelectorAll('.acc-item').forEach(i=>i.classList.add('open')));
+  document.getElementById('collapseAll').addEventListener('click',()=>document.querySelectorAll('.acc-item').forEach(i=>i.classList.remove('open')));
+})();
+
+// glossary
+(function(){
+  const g=document.getElementById('glossList');
+  glossary.forEach(x=>{
+    const d=document.createElement('div'); d.className='gterm';
+    d.innerHTML=`<div class="h"><b>${x.t}</b><span class="full">${x.full}</span></div><p>${x.d}</p>`;
+    g.appendChild(d);
   });
 })();
 

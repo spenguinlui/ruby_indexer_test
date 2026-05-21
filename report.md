@@ -97,6 +97,73 @@ END_SUMMARY
 | 12 | `method_missing` 轉發 inner object | 列自己 def 的 method + 推 method_missing 轉發的型別 | 看不出哪些是轉發,要推 initializer 型別 | **3** |
 | 13 | Hash dispatch table(字串→class) | 找 dispatch table lookup 位置 + 類似 pattern | `HASH[key]` 是字串 lookup,非 constant | **2** |
 
+### 3.1 逐題詳解（要找什麼 / 為什麼難追）
+
+**case-1 · has_one + delegate 鏈式** — 某 model 用 `has_one :profile` 建立關聯,presenter 又用 `delegate :phone, to: :profile` 把 phone 委派出去。要找出整個 codebase 裡所有最終會碰到 `Account::Profile#phone` 的點,分四類:(A) 直接 `profile.phone`、(B) 走關聯 `user.profile.phone`、(C) 透過 presenter 的 delegate 隱式呼叫、(D) 透過 `send(:phone)` 動態呼叫。
+**難在**:`phone` 在 Profile 裡**根本沒有 `def phone`** — 是 `delegate` 巨集在執行期生成的,grep `def phone` 找不到;且要判斷 `user.profile` 的型別需要型別推論。
+
+**case-2 · AASM public_send 動態 event** — AASM 是 Ruby 狀態機 gem,狀態轉換稱 event。要找全觸發 event 的呼叫,含直接(`order.approve!`)與動態(`order.public_send("do_#{state}!")`),並標出 silent bug(動態拼出的 event 名不存在、執行到才炸的)。
+**難在**:動態方法名是執行期用字串拼出來的,原始碼裡**沒有那個字面字串**,grep 找不到。
+
+**case-3 · class_eval heredoc 動態定義** — `class_eval` 把一段字串當 class 內容在執行期執行;heredoc 是多行字串寫法。要找方法定義位置 + 這段一共動態生成幾個方法。
+**難在**:`def` 寫在「字串」(heredoc)裡再交給 class_eval,對解析 **AST** 的工具來說只是字串常數,不展開。
+
+**case-4 · 多 namespace 同名 class(給 FQN)** — 給定 **FQN**(如 `AccountsReceivable::Models::Invoice`)找全引用;prompt 故意寬鬆,看模型會不會主動連短形式 `Invoice` 一起找。
+**難在**:grep 完整 FQN **漏短形式**,grep 短形式又**誤抓其他 namespace 的同名 class**。
+
+**case-4A · 多 namespace 同名(不給 FQN)** — 不給 FQN,要先自己找出有幾個同名 class 分散在不同 namespace,再按 namespace 分組統計引用。
+**難在**:grep 一個短名會把所有 namespace 引用**混在一起**,無法判斷某次引用指哪一個。
+
+**case-5 · Sidekiq YAML 字串引用 worker** — Sidekiq 是背景工作框架,worker 是執行背景工作的 class。要找全某 worker 的引用,含寫在 `config/sidekiq.yml` 排程裡的字串引用。
+**難在**:rubydex 只解析 `.rb`,**看不到 `.yml`**;這個 worker 主要被 YAML 字串排程引用,語意 indexer 完全看不到。
+
+**case-6 · 重開 Object monkey patch** — monkey patch 指執行期重開既有 class(連 `Object` 都能開)加方法。要找某個加在 `Object` 上的方法定義 + 所有 caller。
+**難在**:加在 `Object` 上**所有物件都有**這方法,呼叫端看似普通呼叫、無線索;定義又藏在不起眼的 helper。
+
+**case-7 · polymorphic source_type 自訂字串** — polymorphic association 用 `xxx_type` 字串欄記錄「對應哪個 model」。要找全寫入 `source_type: '<str>'` 的點,推對應 class,標出對不到 class 的 silent bug。
+**難在**:`source_type` 存的是**字串字面值**非常數,不在 index 裡;字串→class 對應邏輯散落各處。
+
+**case-8 · Zeitwerk autoload + 短形式常數** — Zeitwerk 是 Rails 自動載入器,依「檔名↔常數名」規則自動載入,所以很多地方寫短名。要找全某常數引用:FQN + 短形式 + 字串。
+**難在**:短形式合法,同一常數**有的寫全名有的寫短名**,grep 一種就漏另一種(語意 indexer 該贏 grep 的場景)。
+
+**case-9 · Rails callback symbol → method** — callback 是 model 生命週期掛鉤(`before_save :foo`)。要列所有 callback,分 symbol / block,並驗證 symbol 指到的方法存在。
+**難在**:`:foo` 是 **symbol 不是常數**,語意 indexer 不認「symbol 綁到哪個方法」這條關係。
+
+**case-10 · Rails i18n key tree + 動態 lookup** — i18n 把翻譯放 `.yml`,用 key 取用(`t('users.title')`)。要找全某段 key 在 `.rb` / `.erb` 的引用,含動態拼的 key。
+**難在**:rubydex 不看 yml;動態 key(`t("users.#{section}.title")`)要先**推 `section` 的可能值**才知道指到哪。
+
+**case-11 · Rails nested resources path helper** — path helper 是路由自動生成的網址方法(`edit_admin_facility_path`)。給 helper 名,反推 routes 宣告 + `controller#action` + 所有 caller。
+**難在**:helper **沒有實際 `def`**(路由依命名規則生成);routes.rb 只寫 `resources :facilities`,helper 名經命名規則展開,中間無字面字串可 grep。
+
+**case-12 · method_missing 轉發 inner object** — `method_missing` 是「呼叫不存在方法時」的攔截點,常用來轉發給內部物件。要列 class 自己 `def` 的方法,並推 method_missing 轉發給內部哪個物件(推型別)。
+**難在**:被轉發的方法與自己定義的**呼叫起來一模一樣**,看不出哪些是轉發;要推 initializer 內部物件型別。
+
+**case-13 · Hash dispatch table(字串→class)** — dispatch table 用 Hash 把字串 key 對應到 class / 邏輯,靠 `HASH[key]` 查表決定行為。要找查表位置(`SOURCE_MODELS[source_type]`)+ 類似 pattern。
+**難在**:`HASH[key]` 是**字串查表**,key 非常數,語意 indexer 不當成「引用某 class」的關係。
+
+### 3.2 名詞 / 縮寫速查
+
+| 縮寫 / 術語 | 全名 | 一句話 |
+|---|---|---|
+| **FQN** | Fully Qualified Name | 完整限定名稱,帶完整命名空間的名字(`A::B::Invoice`);相對於只寫 `Invoice` 的短形式 |
+| **AST** | Abstract Syntax Tree | 抽象語法樹;寫在字串裡的程式碼不會被展開成 AST,解析工具看不到 |
+| **MCP** | Model Context Protocol | 讓 LLM 接外部工具的協定;rubydex 透過 MCP 提供語意查詢 |
+| **GT** | Ground Truth | 正確答案基準,獨立用 grep + 人工分類精算 |
+| **recall / precision** | 召回率 / 精確率 | recall = 該找的有多少被找到(漏報壓低);precision = 找到的有多少對(過報壓低)。本報告 recall-first = 寧過報別漏 |
+| **AASM** | Acts As State Machine | Ruby 狀態機 gem,狀態轉換稱 event |
+| **Zeitwerk** | Rails 自動載入器 | 依「檔名↔常數名」自動載入,讓很多地方可寫短名 |
+| **i18n** | internationalization | 國際化;翻譯放 `.yml` 用 key 取用(中間 18 字母縮寫) |
+| **silent bug** | 靜默錯誤 | 不報錯但行為已錯;如動態方法名不存在、執行到才炸 |
+| **monkey patch** | 猴子補丁 | 執行期重開既有 class(連 Object)加方法 |
+| **delegate** | 委派 | Rails 巨集,把方法呼叫轉交關聯物件;被委派方法無實際 `def` |
+| **polymorphic** | 多型關聯 | 用 `xxx_type` 字串欄記錄對應哪個 model |
+| **callback** | 生命週期掛鉤 | model 在存檔/刪除等時機自動觸發的鉤子 |
+| **method_missing** | 缺方法攔截 | 呼叫不存在方法時的攔截點,常用來轉發 |
+| **heredoc** | 多行字串語法 | `<<~SQL ... SQL`;裡面像程式碼也只是字串 |
+| **class_eval** | 執行期求值 | 把字串當 class 內容在執行期執行,可動態定義方法 |
+| **dispatch table** | 分派表 | 用 Hash 把字串 key 對應到 class / 邏輯,`HASH[key]` 查表 |
+| **Sidekiq** | 背景工作框架 | Ruby background job 框架;worker 常用 YAML 排程 |
+
 ---
 
 ## 四、測試數據
