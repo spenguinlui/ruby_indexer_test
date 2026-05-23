@@ -7,6 +7,8 @@
 
 📊 **[線上互動報告 →](https://spenguinlui.github.io/ruby_indexer_test/)**　·　📄 [完整報告 report.md](./report.md)
 
+> 🆕 **[V2 報告 →](https://spenguinlui.github.io/ruby_indexer_test/v2.html)** — 把 prompt 最大模糊化、開放全部工具(含 Glob)、with/without 只差載不載 MCP(**自然選用**),外加 refactor 影響面 case。15 cases × 3 models × 2 = 90 結果點。
+
 ---
 
 ## 一句話結論
@@ -40,12 +42,24 @@
 
 ```
 ruby_indexer_test/
-├── index.html     ← 互動報告(GitHub Pages 服務這支)
+├── index.html     ← V1 互動報告(GitHub Pages 首頁)
+├── v2.html        ← V2 互動報告(模糊 prompt × 自然選用 × refactor)
 ├── report.md      ← 完整方法論 + 數據 + 結論
 └── README.md      ← 本檔
 ```
 
-`index.html` 是單一自含檔案(無 build step、無外部相依,僅載 Google Fonts),可直接掛 GitHub Pages。
+`index.html` / `v2.html` 都是單一自含檔案(無 build step、無外部相依,僅載 Google Fonts),共用同一套樣式,頂部可互相切換,可直接掛 GitHub Pages。
+
+## V1 vs V2 差在哪
+
+| | V1（index.html） | V2（v2.html） |
+|---|---|---|
+| prompt | 詳細(給 FQN / 形式 / 排除 / RESULT_SUMMARY) | **最大模糊**(只給短名) |
+| 工具 | 文字強迫「用 rubydex」或「用 grep」 | **不限制,模型自選**(含 Glob) |
+| with/without 差別 | 強迫用 vs 強迫不用 | **只差載不載 MCP** |
+| 額外 | — | **refactor 影響面 case** |
+
+**V2 核心結論**:自然選用下,把 rubydex 放進工具箱對 recall **一致中性偏負**(6 題 ×3 模型 = 18 組對照中從沒提升,唯一例外 codex case-1),Opus 端成本還 +53%。但 V1 的「rubydex 鎖死 Claude」陷阱在 V2 **沒有重演** —— 模型會自己在 rubydex 沒用的題改走 grep。rubydex 的價值高度集中在「對的題(namespace)+ 對的模型 + 明確指示」這個窄帶。
 
 ## 關於匿名化
 

@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rubydex Benchmark V2 — 模糊 prompt × 自然工具選用 × refactor case</title>
+<meta name="description" content="V2:把 prompt 最大模糊化、開放全部工具、with/without 只差載不載 MCP,讓模型自然選用。15 cases × 3 models × 2 = 90 結果點。外加 refactor 影響面 case。Recall-first 評分。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#f4efe6; --card:#fbf9f4; --ink:#211f1c; --muted:#6b6358;
+    --line:#e2d9c8; --line-strong:#ccc0a8;
+    --accent:#0f766e; --accent-soft:#cfeae6;
+    --good:#15803d; --good-bg:#dcfce7; --good-line:#a7e3bc;
+    --miss:#b91c1c; --miss-bg:#fde2e2; --miss-line:#f3b4b4;
+    --over:#b45309; --over-bg:#fdeccf; --over-line:#eecb8e;
+    --mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+    --disp:'Space Grotesk',system-ui,sans-serif;
+    --body:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC",sans-serif;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0; font-family:var(--body); color:var(--ink); line-height:1.65;
+    background:
+      radial-gradient(1200px 600px at 80% -10%, #fbf6ec 0%, rgba(251,246,236,0) 60%),
+      radial-gradient(900px 500px at -10% 10%, #f1ece0 0%, rgba(241,236,224,0) 55%),
+      var(--paper);
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1080px; margin:0 auto; padding:0 24px}
+  a{color:var(--accent); text-underline-offset:3px}
+
+  /* side floating nav (frosted white card, always-on labels) */
+  .sidenav{position:fixed; left:24px; top:50%; transform:translateY(-50%); z-index:60;
+    display:flex; flex-direction:column; gap:1px;
+    background:rgba(255,255,255,.6); backdrop-filter:blur(12px) saturate(1.1); -webkit-backdrop-filter:blur(12px) saturate(1.1);
+    border:1px solid rgba(255,255,255,.8); box-shadow:0 10px 34px rgba(40,30,10,.12); border-radius:16px; padding:9px}
+  .sidenav-h{font-family:var(--mono); font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:var(--muted); padding:4px 12px 7px}
+  .sidenav a{display:flex; align-items:center; gap:10px; text-decoration:none; color:var(--muted);
+    padding:7px 14px 7px 11px; border-radius:10px; font-family:var(--mono); font-size:12px; line-height:1; white-space:nowrap; transition:background .15s,color .15s}
+  .sidenav .dot{width:6px; height:6px; border-radius:50%; background:var(--line-strong); transition:all .2s; flex:0 0 auto}
+  .sidenav a:hover{background:rgba(255,255,255,.72)}
+  .sidenav a:hover .lbl{color:var(--ink)}
+  .sidenav a.active{background:var(--accent-soft)}
+  .sidenav a.active .dot{background:var(--accent); transform:scale(1.35)}
+  .sidenav a.active .lbl{color:var(--accent); font-weight:600}
+  @media(max-width:1340px){ .sidenav{display:none} }
+
+  /* ---- hero ---- */
+  header.hero{padding:72px 0 40px; border-bottom:1px solid var(--line)}
+  .kicker{font-family:var(--mono); font-size:12.5px; letter-spacing:.16em; text-transform:uppercase;
+    color:var(--accent); display:inline-flex; align-items:center; gap:9px}
+  .kicker::before{content:""; width:26px; height:1px; background:var(--accent)}
+  h1{font-family:var(--disp); font-weight:700; font-size:clamp(34px,5.4vw,58px);
+    line-height:1.04; letter-spacing:-.02em; margin:18px 0 0}
+  h1 em{font-style:normal; color:var(--accent)}
+  .lede{font-size:clamp(16px,2.1vw,20px); color:var(--muted); max-width:720px; margin:20px 0 0}
+  .meta{font-family:var(--mono); font-size:12.5px; color:var(--muted); margin-top:22px; display:flex; flex-wrap:wrap; gap:6px 18px}
+  .meta b{color:var(--ink); font-weight:500}
+
+  .stats{display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin:38px 0 0}
+  .stat{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px 18px 16px}
+  .stat .n{font-family:var(--disp); font-weight:700; font-size:34px; line-height:1; letter-spacing:-.02em}
+  .stat .l{font-size:12.5px; color:var(--muted); margin-top:8px}
+  .stat.accent .n{color:var(--accent)}
+
+  /* ---- section ---- */
+  section{padding:54px 0; border-bottom:1px solid var(--line)}
+  .sec-head{display:flex; align-items:baseline; gap:14px; margin:0 0 22px}
+  .sec-num{font-family:var(--mono); font-size:13px; color:var(--accent); font-weight:500}
+  h2{font-family:var(--disp); font-weight:600; font-size:clamp(23px,3.2vw,30px); letter-spacing:-.01em; margin:0}
+  h3{font-family:var(--disp); font-weight:600; font-size:18px; margin:30px 0 12px}
+  p{margin:0 0 14px}
+  .sub{color:var(--muted)}
+
+  /* tl;dr */
+  .tldr{background:linear-gradient(180deg,#15433f,#0f2f2c); color:#eafaf6; border-radius:18px;
+    padding:30px 32px; font-size:clamp(16px,2.1vw,19px); line-height:1.6}
+  .tldr .lab{font-family:var(--mono); font-size:12px; letter-spacing:.16em; text-transform:uppercase; color:#79d8c9}
+  .tldr strong{color:#fff}
+  .tldr p{margin:12px 0 0}
+  .tldr p:first-of-type{margin-top:14px}
+
+  /* callout */
+  .callout{border-left:3px solid var(--miss); background:var(--miss-bg); border-radius:0 12px 12px 0;
+    padding:16px 20px; margin:20px 0}
+  .callout .lab{font-family:var(--mono); font-size:11.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--miss); font-weight:700}
+  .callout p{margin:6px 0 0; font-size:15px}
+
+  /* tables */
+  .tbl-wrap{overflow-x:auto; border:1px solid var(--line); border-radius:14px; background:var(--card)}
+  table{border-collapse:collapse; width:100%; font-size:14px}
+  th,td{padding:11px 13px; text-align:left; border-bottom:1px solid var(--line); white-space:nowrap}
+  thead th{font-family:var(--mono); font-size:11.5px; letter-spacing:.04em; text-transform:uppercase;
+    color:var(--muted); font-weight:500; background:#f7f2e8; position:sticky; top:0}
+  tbody tr:last-child td{border-bottom:none}
+  tbody tr:hover{background:#f7f2e8}
+  td.tech{white-space:normal; min-width:200px; font-weight:500}
+  td.why{white-space:normal; min-width:230px; color:var(--muted); font-size:13px}
+  .num{font-family:var(--mono); text-align:right}
+  .gt{font-family:var(--mono); font-weight:700; text-align:right; color:var(--accent)}
+  .cid{font-family:var(--mono); font-weight:700; color:var(--ink)}
+
+  /* heatmap */
+  .hm-controls{display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin:0 0 16px}
+  .toggle{display:inline-flex; border:1px solid var(--line-strong); border-radius:10px; overflow:hidden; background:var(--card)}
+  .toggle button{font-family:var(--mono); font-size:12.5px; border:none; background:transparent; color:var(--muted);
+    padding:8px 14px; cursor:pointer}
+  .toggle button.on{background:var(--accent); color:#fff}
+  .legend{display:flex; flex-wrap:wrap; gap:6px 16px; font-family:var(--mono); font-size:11.5px; color:var(--muted); margin-left:auto}
+  .legend i{display:inline-block; width:13px; height:13px; border-radius:3px; vertical-align:-2px; margin-right:6px; border:1px solid rgba(0,0,0,.08)}
+  .hm td.cell{font-family:var(--mono); text-align:center; font-weight:500; cursor:default; min-width:62px}
+  .hm td.cell .d{font-size:10.5px; opacity:.7; display:block; margin-top:1px}
+  .hm thead th.cond{text-align:center}
+  .c-good{background:var(--good-bg); color:var(--good)}
+  .c-miss1{background:#fdecec; color:var(--miss)}
+  .c-miss2{background:#fbd4d4; color:#7f1212}
+  .c-miss3{background:#f3a8a8; color:#5c0a0a}
+  .c-over1{background:#fdf0d8; color:var(--over)}
+  .c-over2{background:#f8dca6; color:#7c4a06}
+  .c-na{background:#efeae0; color:#a59c8c}
+
+  /* accordion (cases) */
+  .acc-tools{display:flex; gap:10px; margin:0 0 14px}
+  .acc{border:1px solid var(--line); border-radius:14px; background:var(--card); overflow:hidden}
+  .acc-item{border-bottom:1px solid var(--line)}
+  .acc-item:last-child{border-bottom:none}
+  .acc-head{display:grid; grid-template-columns:40px 1fr auto 22px; gap:14px; align-items:center;
+    padding:15px 18px; cursor:pointer; user-select:none}
+  .acc-head:hover{background:#f7f2e8}
+  .acc-head .cid{font-family:var(--mono); font-weight:700; color:var(--accent); font-size:14px}
+  .acc-head .t{font-weight:600; font-size:15px}
+  .acc-head .t .s{display:block; font-weight:400; font-size:13px; color:var(--muted); margin-top:3px; line-height:1.5}
+  .acc-head .gtb{font-family:var(--mono); font-size:12px; font-weight:700; color:var(--accent);
+    background:var(--accent-soft); padding:4px 11px; border-radius:20px; white-space:nowrap}
+  .acc-head .chev{color:var(--muted); transition:transform .2s; font-size:14px; text-align:center}
+  .acc-item.open .chev{transform:rotate(90deg)}
+  .acc-body{display:none; padding:0 20px 20px 72px}
+  .acc-item.open .acc-body{display:block}
+  .acc-body .blk{margin:14px 0 0}
+  .acc-body .lab{font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; font-weight:700}
+  .acc-body .lab.find{color:var(--accent)} .acc-body .lab.hard{color:var(--over)}
+  .acc-body p{margin:5px 0 0; font-size:14.5px; line-height:1.7}
+  .acc-body code{font-family:var(--mono); font-size:12.5px; background:#00000008; padding:1px 5px; border-radius:5px}
+  .acc-body b{color:var(--ink)}
+  @media(max-width:760px){ .acc-body{padding-left:20px} .acc-head{grid-template-columns:34px 1fr 22px} .acc-head .gtb{display:none} }
+
+  /* glossary */
+  .gloss{display:grid; grid-template-columns:repeat(2,1fr); gap:12px}
+  .gterm{background:var(--card); border:1px solid var(--line); border-radius:11px; padding:13px 16px}
+  .gterm .h{display:flex; align-items:baseline; gap:8px; flex-wrap:wrap}
+  .gterm b{font-family:var(--mono); font-size:14px; color:var(--ink)}
+  .gterm .full{font-size:12px; color:var(--accent)}
+  .gterm p{margin:6px 0 0; font-size:13px; color:var(--muted); line-height:1.6}
+  .gterm code{font-family:var(--mono); font-size:11.5px; background:#00000008; padding:1px 4px; border-radius:4px}
+  @media(max-width:760px){ .gloss{grid-template-columns:1fr} }
+
+  /* corpus */
+  .corpus{display:grid; grid-template-columns:repeat(3,1fr); gap:14px}
+  .ccard{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:20px}
+  .ccard .capp{font-family:var(--mono); font-weight:700; color:var(--accent); font-size:15px}
+  .ccard .capp span{display:block; font-family:var(--body); font-weight:400; font-size:11.5px; color:var(--muted); margin-top:3px}
+  .ccard .cbig{font-family:var(--disp); font-weight:700; font-size:38px; line-height:1; letter-spacing:-.02em; margin:16px 0 0}
+  .ccard .cbig span{display:block; font-family:var(--body); font-weight:400; font-size:12px; color:var(--muted); margin-top:5px}
+  .ccard .cstats{display:grid; grid-template-columns:1fr 1fr; gap:8px 14px; margin:18px 0 0; padding:16px 0 0; border-top:1px solid var(--line); font-size:12.5px; color:var(--muted)}
+  .ccard .cstats b{font-family:var(--mono); color:var(--ink); font-weight:600}
+  .ccard .ccases{margin-top:15px; font-family:var(--mono); font-size:11.5px; color:var(--accent); background:var(--accent-soft); padding:5px 10px; border-radius:8px; display:inline-block}
+  .apptag{color:var(--accent); font-family:var(--mono); font-size:12px}
+  @media(max-width:760px){ .corpus{grid-template-columns:1fr} }
+
+  /* bars */
+  .bars{display:flex; flex-direction:column; gap:12px; margin-top:6px}
+  .bar-row{display:grid; grid-template-columns:130px 1fr; gap:14px; align-items:center}
+  .bar-row .lbl{font-family:var(--mono); font-size:13px; font-weight:500; text-align:right}
+  .bar-row .lbl .tag{display:block; font-size:10.5px; color:var(--muted); font-weight:400}
+  .track{position:relative; height:34px; background:#efe8db; border-radius:8px; overflow:hidden}
+  .fill{position:absolute; left:0; top:0; bottom:0; border-radius:8px; display:flex; align-items:center;
+    justify-content:flex-end; padding:0 11px; font-family:var(--mono); font-size:12.5px; color:#fff; font-weight:500;
+    min-width:42px; transition:width .9s cubic-bezier(.2,.8,.2,1)}
+  .fill.win{background:linear-gradient(90deg,#16a34a,#15803d)}
+  .fill.mid{background:linear-gradient(90deg,#d99220,#b45309)}
+  .fill.bad{background:linear-gradient(90deg,#dc4747,#b91c1c)}
+  .bar-note{font-family:var(--mono); font-size:11px; color:var(--muted); margin-top:2px}
+
+  /* two-col should/shouldn't */
+  .cols{display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:8px}
+  .col{border:1px solid var(--line); border-radius:14px; padding:20px 22px; background:var(--card)}
+  .col.yes{border-color:var(--good-line); background:linear-gradient(180deg,#f1faf3,#fbf9f4)}
+  .col.no{border-color:var(--over-line); background:linear-gradient(180deg,#fdf6ea,#fbf9f4)}
+  .col h4{font-family:var(--disp); font-size:16px; margin:0 0 12px; display:flex; align-items:center; gap:8px}
+  .col.yes h4{color:var(--good)} .col.no h4{color:var(--over)}
+  .col ul{margin:0; padding-left:18px} .col li{margin:0 0 8px; font-size:14px}
+  .col code{font-family:var(--mono); font-size:12.5px; background:#00000008; padding:1px 5px; border-radius:5px}
+
+  /* code sample */
+  pre{font-family:var(--mono); font-size:12.5px; line-height:1.6; background:#1c2522; color:#dbe9e5;
+    border-radius:12px; padding:18px 20px; overflow-x:auto; margin:14px 0}
+  pre .cm{color:#7fae9f} pre .hi{color:#ffd479}
+  code{font-family:var(--mono)}
+
+  .grid2{display:grid; grid-template-columns:1fr 1fr; gap:18px}
+  .note{font-size:13px; color:var(--muted)}
+  .pill{font-family:var(--mono); font-size:11px; padding:2px 8px; border-radius:20px; border:1px solid var(--line-strong); color:var(--muted)}
+
+  footer{padding:46px 0 70px; color:var(--muted); font-size:13px}
+  footer .anon{background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px 20px; margin:0 0 22px; font-size:13px}
+  footer code{background:#00000008; padding:1px 5px; border-radius:5px; font-size:12px}
+
+  @media(max-width:760px){
+    .stats{grid-template-columns:repeat(2,1fr)}
+    .cols,.grid2{grid-template-columns:1fr}
+    .bar-row{grid-template-columns:96px 1fr}
+    h1{font-size:34px}
+  }
+  /* ---- V2 additions ---- */
+  .vswitch{display:inline-flex; gap:2px; margin-top:18px; background:var(--card); border:1px solid var(--line); border-radius:11px; padding:3px}
+  .vswitch a{font-family:var(--mono); font-size:12.5px; text-decoration:none; color:var(--muted); padding:6px 14px; border-radius:8px}
+  .vswitch a.cur{background:var(--accent); color:#fff; font-weight:600}
+  .v2tag{display:inline-block; font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:#fff; background:var(--accent); padding:2px 8px; border-radius:6px; vertical-align:middle; margin-left:8px}
+  .vok{color:var(--good); font-weight:700}
+  .vpart{color:var(--over); font-weight:700}
+  .vbad{color:var(--miss); font-weight:700}
+  table.vt{width:100%; border-collapse:collapse; font-size:14px}
+  table.vt th,table.vt td{border:1px solid var(--line); padding:8px 10px; text-align:left}
+  table.vt th{background:var(--card); font-family:var(--mono); font-size:12px; color:var(--muted); font-weight:500}
+  table.vt td.c{text-align:center; font-family:var(--mono)}
+  table.vt tr td:first-child{font-family:var(--mono); font-size:12.5px}
+  .hl-hurt{background:var(--miss-bg)}
+</style>
+</head>
+<body>
+
+<nav class="sidenav" id="sidenav" aria-label="章節導覽">
+  <div class="sidenav-h">V2 目錄</div>
+  <a href="#tldr"><span class="dot"></span><span class="lbl">摘要</span></a>
+  <a href="#whatsnew"><span class="dot"></span><span class="lbl">01 v1→v2 差異</span></a>
+  <a href="#recall"><span class="dot"></span><span class="lbl">02 Recall 主表</span></a>
+  <a href="#cost"><span class="dot"></span><span class="lbl">03 成本/工具</span></a>
+  <a href="#case1"><span class="dot"></span><span class="lbl">04 case-1 深潛</span></a>
+  <a href="#refactor"><span class="dot"></span><span class="lbl">05 refactor</span></a>
+  <a href="#value"><span class="dot"></span><span class="lbl">06 value 題</span></a>
+  <a href="#verdict"><span class="dot"></span><span class="lbl">07 結論</span></a>
+</nav>
+
+<header class="hero">
+  <div class="wrap">
+    <span class="kicker">Code-Search Benchmark · V2 · 2026</span>
+    <h1>放開手讓模型<em>自己選工具</em><br>rubydex 還幫得上忙嗎?</h1>
+    <p class="lede">V1 是「強迫用 rubydex vs 強迫用 grep」。<b>V2 改成最貼近真實的設定</b>:prompt 寫得最模糊、開放全部工具(含 Glob)、with/without <b>只差載不載入 MCP</b> —— 模型自己決定要不要呼叫 rubydex。另加一個對標官方的 <b>refactor 影響面</b> case。</p>
+    <div class="vswitch">
+      <a href="./index.html">V1 報告</a>
+      <a class="cur" href="./v2.html">V2 報告</a>
+    </div>
+    <div class="meta">
+      <span><b>15</b> cases</span>
+      <span><b>3</b> models（Claude Haiku 4.5 · Claude Opus 4.7 · GPT-5.5）</span>
+      <span><b>2</b> 條件（MCP 載 / 不載）</span>
+      <span><b>90</b> 結果點</span>
+      <span>目標：<b>3 個生產 Rails 專案</b>（App-A / B / C）</span>
+    </div>
+    <div class="stats">
+      <div class="stat accent"><div class="n">0/18</div><div class="l">rubydex 提升 recall 的對照數（6 題×3 模型，僅 1 例外）</div></div>
+      <div class="stat"><div class="n">1.0→.64</div><div class="l">case-1 Opus:有 rubydex 在反而從滿分掉</div></div>
+      <div class="stat"><div class="n">+53%</div><div class="l">Opus 端成本（換不到 recall 好處）</div></div>
+      <div class="stat"><div class="n">0 次</div><div class="l">盲區題模型自動呼叫 rubydex 的次數</div></div>
+    </div>
+  </div>
+</header>
+
+<section id="tldr">
+  <div class="wrap">
+    <div class="tldr">
+      <span class="lab">一句話結論</span>
+      <p><strong>把 rubydex 丟進工具箱、不特別叫它用 —— 對 recall 一致中性偏負,成本混合,弱模型受害最大。</strong></p>
+      <p>6 個可機器計分的題裡,18 組 with/without 對照中 rubydex <strong>從沒提升 recall</strong>(唯一例外 codex case-1);卻屢屢拉低 —— 最戲劇的是 <strong>Opus case-1:沒 rubydex 拿滿分 1.00,有 rubydex 掉到 0.64</strong>。</p>
+      <p>但好消息:V1 的「rubydex 鎖死 Claude」與「信嚴格 AST 答錯」<strong>在 V2 都沒重演</strong> —— 自然選用下,模型會在 rubydex 沒用的題自己改走 grep。</p>
+    </div>
+  </div>
+</section>
+
+<section id="whatsnew">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">01</span><h2>V2 跟 V1 差在哪</h2></div>
+    <p class="sub">三項刻意改動,目的是把測試從「人工強迫」推向「真實使用」,以提高測試準度。</p>
+    <div class="grid2">
+      <div>
+        <h3>① prompt 最大模糊化</h3>
+        <p class="sub">V1 會把答案形狀餵給模型(給 FQN、def 位置、引用形式、排除規則、固定 <code>RESULT_SUMMARY</code>)。V2 只給最小語意錨點(短名),不給路徑、不給形式、不給排除 —— 逼模型自己探索。<br><b>例外</b>:case-4/4A/8 是刻意設計的「prompt 明確度」對照三胞胎,保留 V1 明確度,否則三題塌成一題。</p>
+        <h3>② 開放全部工具(含 Glob)</h3>
+        <p class="sub">V1 用文字「請用 Grep / Read」把 Glob 排除掉了。V2 不寫任何工具限制 —— Grep / Glob / Read / Bash 全開,模型自選。</p>
+      </div>
+      <div>
+        <h3>③ with/without 只差「載不載 MCP」</h3>
+        <p class="sub">兩版 prompt <b>文字完全相同</b>。差別純在環境:with 載入 rubydex MCP、without 不載。量到的是最有決策價值的問題 ——「<b>把 rubydex 放工具箱、不強迫用,到底有沒有讓結果變好</b>」。</p>
+        <h3>④ 新增 refactor 影響面 case</h3>
+        <p class="sub">對標官方唯一沒涵蓋的「真的改 code」維度。改問「rename 一個 class 的完整影響清單」,對 ground-truth 影響集算 recall(不跑測試、不依賴 DB)。</p>
+      </div>
+    </div>
+    <div class="callout"><span class="lab">為什麼這樣更準</span><p>V1 的「強迫用 rubydex」會製造人工假象(看到工具就硬用)。真實開發者不會被強迫;V2 的自然選用,才反映「裝了 rubydex 之後實際會發生什麼」。</p></div>
+  </div>
+</section>
+
+<section id="recall">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">02</span><h2>Recall 主表 — 6 個可機器計分的題</h2></div>
+    <p class="sub">這 6 題答案是「一組檔案 / 位置」,可自動算 recall(= 找到的 ground-truth 檔 / 應找到)。每格是該條件的 recall;<b>綠=滿分,越紅漏越多</b>。粉紅底=「有 rubydex 反而比沒有差」(recall-first 下最該警惕的)。</p>
+    <div class="tbl-wrap">
+      <table class="hm" id="recallTable">
+        <thead><tr>
+          <th>case</th>
+          <th class="cond">Haiku<br>+rubydex</th><th class="cond">Haiku<br>grep</th>
+          <th class="cond">Opus<br>+rubydex</th><th class="cond">Opus<br>grep</th>
+          <th class="cond">Codex<br>+rubydex</th><th class="cond">Codex<br>grep</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p class="note" style="margin-top:14px">「+rubydex」= MCP 載入但模型自己決定用不用。粉紅底格 = with &lt; without(rubydex 在場反而漏更多)。</p>
+    <div class="callout" style="border-left-color:var(--miss);background:var(--miss-bg)">
+      <span class="lab" style="color:var(--miss)">核心發現:rubydex 對 recall 一致中性偏負</span>
+      <p>18 組 with/without 對照中,rubydex <b>從沒提升 recall</b>(唯一例外:codex case-1,0.57→0.64)。反而多次拉低:Haiku case-1/2、Opus case-1。其餘多為打平(case-5/6/14 強模型端)。在「找全」這件事上,把 rubydex 放進工具箱沒有正貢獻。</p>
+    </div>
+  </div>
+</section>
+
+<section id="cost">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">03</span><h2>成本 overhead × 工具自選行為</h2></div>
+    <h3>把 rubydex 放工具箱要多付多少</h3>
+    <p class="sub">整輪 15 題的總成本,with(載 MCP)對 without(不載):</p>
+    <div class="bars" id="costBars"></div>
+    <p class="sub" style="margin-top:6px"><b>Opus 端貴 53%、卻換不到任何 recall 好處</b>。最毒單題 Opus case-1:貴近一倍、recall 還從 1.00 掉到 0.64。但成本是<b>混合的</b> —— 有些題 with 反而便宜(rubydex 給快答、省掉 grep 探索);一致的負面在 recall,不在成本。</p>
+    <div class="callout" style="border-left-color:var(--good);background:var(--good-bg)">
+      <span class="lab" style="color:var(--good)">V2 最有價值的正面發現:模型會自己跳過 rubydex</span>
+      <p>放開限制後,在 rubydex 的盲區題(source_type 字串、callback symbol、i18n yaml),Haiku 與 Opus 的「+rubydex」那輪<b>呼叫 rubydex 的次數是 0</b> —— 它們自己改走 grep / bash。這直接推翻 V1「LLM 看到 rubydex 就誘惑性亂叫」的結論:<b>那是「強迫用」造成的假象</b>。自然選用下,模型只在 rubydex 強項題(多 namespace)才重用它。</p>
+    </div>
+  </div>
+</section>
+
+<section id="case1">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">04</span><h2>case-1 深潛:從「鎖死」到「偏食」</h2></div>
+    <p class="sub">has_one + delegate 鏈式(找全會碰到某個被委派屬性的點)—— V1 最戲劇的失敗,V2 變得更微妙也更真實。</p>
+    <div class="tbl-wrap">
+      <table class="vt">
+        <thead><tr><th>條件</th><th class="c">recall</th><th>行為</th></tr></thead>
+        <tbody>
+          <tr class="hl-hurt"><td>V1 · 強迫 rubydex(Haiku/Opus)</td><td class="c"><span class="vbad">0 / 24</span></td><td>看到 rubydex 就狂打 MCP、不 fallback grep → 災難性鎖死,全漏</td></tr>
+          <tr><td>V2 · Opus · grep(不載 MCP)</td><td class="c"><span class="vok">1.00</span></td><td>純 grep,找全(含 spec 檔)</td></tr>
+          <tr class="hl-hurt"><td>V2 · Opus · +rubydex</td><td class="c"><span class="vpart">0.64</span></td><td>叫了 rubydex 2 次 + grep 3 次,<b>漏掉 5 個 spec 檔</b></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout">
+      <span class="lab">敘事</span>
+      <p>自然選用<b>治好了 V1 的災難性鎖死</b>(0 → 0.64,模型會混 grep 了),<b>但 rubydex 在場仍把 recall 壓到 grep-only 基線之下</b> —— 它讓模型偏向語意結果、減少 grep 廣掃,漏掉 spec 那種 grep 才掃得到的角落。對 recall-first(漏報重罰)這是扣分項。</p>
+    </div>
+  </div>
+</section>
+
+<section id="refactor">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">05</span><h2>新增:refactor 影響面 case</h2></div>
+    <p class="sub">官方 benchmark 唯一我們 V1 沒涵蓋的維度 —— 真的去改 code 的 refactor。官方用「改完測試通過」當品質訊號;我們改問「rename 一個 class 需要動到的<b>完整影響清單</b>」,對 ground-truth 影響集算 recall(不跑測試、不依賴 DB,更直接量到爬 code 完不完整)。</p>
+    <div class="tbl-wrap">
+      <table class="vt">
+        <thead><tr><th>模型</th><th class="c">+rubydex</th><th class="c">grep</th><th>漏了什麼</th></tr></thead>
+        <tbody>
+          <tr><td>Haiku</td><td class="c"><span class="vpart">0.82</span></td><td class="c"><span class="vpart">0.82</span></td><td>定義檔本身(連帶自動載入的檔名連動)+ 2 個測試檔裡的字串引用</td></tr>
+          <tr><td>Opus-low</td><td class="c"><span class="vok">1.00</span></td><td class="c"><span class="vok">1.00</span></td><td>—</td></tr>
+          <tr><td>Codex</td><td class="c"><span class="vok">1.00</span></td><td class="c"><span class="vok">1.00</span></td><td>—</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="sub" style="margin-top:8px">強模型滿分、有無 rubydex 都一樣 → 這題 rubydex 無加值。Haiku 兩邊都 0.82,漏的正是兩個鑑別點:<b>autoload 檔名連動</b>(改名要連檔名一起改,否則載入炸)與 <b>測試檔字串引用</b>(字串非常數,語意 indexer 也不認)。</p>
+    <div class="callout"><span class="lab">對照官方</span><p>官方「測試通過」訊號無法分辨「漏掉的引用剛好沒被測試覆蓋」;本 case 的 file-level recall 直接抓出這種漏 —— 這是把官方那一格納進我們矩陣後,還能補上的盲點。</p></div>
+  </div>
+</section>
+
+<section id="value">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">06</span><h2>value / count 題逐筆判讀</h2></div>
+    <p class="sub">這 9 題答案不是「檔案清單」而是「值 / 數量 / 推論」,無法機器算 recall,改逐筆讀輸出對正解判:<span class="vok">✓</span> 命中關鍵值 / <span class="vpart">~</span> 部分 / <span class="vbad">✗</span> 漏或錯。</p>
+    <div class="tbl-wrap">
+      <table class="vt" id="valueTable">
+        <thead><tr>
+          <th>case</th><th>正解關鍵值</th>
+          <th class="c">H+r</th><th class="c">H·grep</th><th class="c">O+r</th><th class="c">O·grep</th><th class="c">C+r</th><th class="c">C·grep</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <h3 style="margin-top:24px">value 題的三個結論</h3>
+    <div class="cols">
+      <div class="col">
+        <h4>1 · rubydex 幾乎不改變正確性</h4>
+        <p class="sub">9 題裡 8 題 with≈without。唯一明確加分是 <b>case-4 的 Haiku</b>:寬鬆 prompt 下純 grep 把短形式漏光(0),rubydex 幫它抓回全部 —— 對的是「弱模型 + namespace 短形式 + 該用 rubydex」這精確組合。</p>
+      </div>
+      <div class="col">
+        <h4>2 · 正確性主要看模型強弱</h4>
+        <p class="sub">Opus / Codex 在難題(source_type boss、字串引用、反推 controller#action)穩;Haiku 偏弱 —— 但弱在模型本身,不是 rubydex(這些題 Haiku 多半根本沒叫 rubydex)。</p>
+      </div>
+      <div class="col">
+        <h4>3 · V1 的陷阱都沒重演</h4>
+        <p class="sub">class_eval 的「信嚴格 AST 答 def 不存在」、case-1 的「鎖死」—— 自然選用 + 真的去讀原始碼之後,在 V2 全部消失。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="verdict">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">07</span><h2>結論:自然選用下,該不該裝 rubydex</h2></div>
+    <div class="cols">
+      <div class="col yes">
+        <h4>✓ 值得用的場合</h4>
+        <ul>
+          <li>多 namespace 同名 class 區分 <span class="pill">case-4 · 4A</span></li>
+          <li>短形式 ↔ FQN 識別,<b>且配弱模型 + 明確指示</b></li>
+          <li>把它當「加速器」而非「改變結果」(強模型端)</li>
+        </ul>
+      </div>
+      <div class="col no">
+        <h4>✕ 別期待 / 反而扣分</h4>
+        <ul>
+          <li>丟著讓模型自選 —— recall 中性偏負 <span class="pill">case-1 · 2 · 13</span></li>
+          <li>弱模型(Haiku):rubydex 在場會讓它少 grep、漏 spec</li>
+          <li>文本 / 動態 / 外部資源 —— 模型自己就會跳過 rubydex</li>
+        </ul>
+      </div>
+    </div>
+    <p style="margin-top:22px">把題庫從「rubydex 強項任務」放寬到 15 種真實 Rails 手法、再把設定從「強迫」改成「自然選用」後:<b>官方 30–47% 的漂亮數字不再普遍成立</b>。rubydex 的價值高度集中在「對的題 + 對的模型 + 明確指示」這個窄帶;無腦全掛、丟著讓它自選,對 recall 沒有正貢獻、在 Opus 端還貴 53%。<b>純 LLM(尤其放開 grep/Glob/bash)的程式碼搜尋能力,被低估了。</b></p>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="anon">
+      <b>關於匿名化</b> — 所有 <b>數字(recall / 成本 / 工具呼叫)皆為真實測試結果</b>。為保護受測來源,生產專案以 <code>App-A / B / C</code> 表示,業務 class / 路徑換成中性虛構名(保留結構難度、抽掉業務語意)。V2 與 <a href="./index.html">V1 報告</a> 用同一套匿名規則。
+    </div>
+    <p>V2 測試:2026-05-22/23。設定:prompt 最大模糊化 · 全工具開放 · with/without 只差載不載 MCP(自然選用)。對照模型:Claude Haiku 4.5 · Claude Opus 4.7 (low effort) · GPT-5.5 (codex CLI)。</p>
+    <p>方法論與完整數據詳見 repo;V1(強迫用工具)對照見 <a href="./index.html">index.html</a>。</p>
+  </div>
+</footer>
+
+<script>
+// ---- recall heatmap (6 機器計分題) ----
+const rcases=[
+ {id:'1', tech:'has_one + delegate 鏈式', app:'A', h:{hw:0.643,hwo:0.786,ow:0.643,owo:1.000,cw:0.643,cwo:0.571}},
+ {id:'2', tech:'AASM 動態 event 呼叫點', app:'A', h:{hw:0.833,hwo:1.000,ow:1.000,owo:1.000,cw:0.833,cwo:0.833}},
+ {id:'5', tech:'Sidekiq YAML 字串引用', app:'B', h:{hw:1.000,hwo:1.000,ow:1.000,owo:1.000,cw:1.000,cwo:1.000}},
+ {id:'6', tech:'重開 Object monkey patch', app:'B', h:{hw:1.000,hwo:1.000,ow:1.000,owo:1.000,cw:1.000,cwo:1.000}},
+ {id:'13', tech:'Hash dispatch + 類似表', app:'A', h:{hw:0.500,hwo:0.750,ow:1.000,owo:1.000,cw:1.000,cwo:1.000}},
+ {id:'14', tech:'rename 影響面（新）', app:'A', h:{hw:0.824,hwo:0.824,ow:1.000,owo:1.000,cw:1.000,cwo:1.000}},
+];
+const condOrder=['hw','hwo','ow','owo','cw','cwo'];
+const pairOf={hw:'hwo',ow:'owo',cw:'cwo'}; // with -> 對應 without
+function rClass(v){ if(v>=0.999) return 'c-good'; if(v>=0.8) return 'c-miss1'; if(v>=0.6) return 'c-miss2'; return 'c-miss3'; }
+(function(){
+  const tb=document.querySelector('#recallTable tbody');
+  rcases.forEach(c=>{
+    let row=`<td class="cid">case-${c.id}</td>`;
+    condOrder.forEach(k=>{
+      const v=c.h[k];
+      let hurt='';
+      if(pairOf[k] && v < c.h[pairOf[k]]-0.001) hurt=' hl-hurt'; // with < without
+      row+=`<td class="cell ${rClass(v)}${hurt}">${v.toFixed(2)}</td>`;
+    });
+    const tr=document.createElement('tr'); tr.innerHTML=row; tb.appendChild(tr);
+  });
+})();
+
+// ---- value verdict table ----
+const M={ok:'<span class="vok">✓</span>', part:'<span class="vpart">~</span>', bad:'<span class="vbad">✗</span>'};
+const vcases=[
+ {id:'3', key:'def 在 class_eval 區塊、動態生 6 個方法', v:['ok','ok','ok','ok','ok','ok']},
+ {id:'7', key:'9 個 distinct 字串值、4 個 silent bug', v:['part','part','ok','ok','part','ok']},
+ {id:'8', key:'短形式↔FQN：full 11 / short 14 / total 25', v:['part','part','ok','ok','ok','ok']},
+ {id:'9', key:'3 callback（2 symbol + 1 block）、2 只被 callback 用', v:['ok','ok','ok','ok','ok','ok']},
+ {id:'4', key:'多 namespace 給 FQN：total≈101（含短形式）', v:['part','bad','part','part','part','part'], note:'Haiku·grep 漏光短形式；rubydex 幫它抓回'},
+ {id:'4A', key:'多 namespace 不給 FQN：4 個同名 class、total≈141', v:['ok','ok','ok','ok','ok','ok']},
+ {id:'10', key:'i18n：14 鍵 / 動態 5 / 改名動 4 檔', v:['part','part','part','part','part','part']},
+ {id:'11', key:'routes helper → controller#edit / callers 3 / 改名動 3', v:['part','part','part','part','part','part'], note:'反推 controller#action 全員偏弱，Codex 最準'},
+ {id:'12', key:'method_missing：own def 3 / 內部物件型別 1', v:['ok','ok','ok','ok','ok','ok']},
+];
+(function(){
+  const tb=document.querySelector('#valueTable tbody');
+  vcases.forEach(c=>{
+    let row=`<td>case-${c.id}</td><td>${c.key}${c.note?`<br><span class="sub" style="font-size:12px">▸ ${c.note}</span>`:''}</td>`;
+    c.v.forEach(x=>row+=`<td class="c">${M[x]}</td>`);
+    const tr=document.createElement('tr'); tr.innerHTML=row; tb.appendChild(tr);
+  });
+})();
+
+// ---- cost overhead bars (with vs without, 整輪總成本相對) ----
+const cost=[
+ {name:'Haiku · grep（基準）', pct:100, cls:'win', lbl:'基準'},
+ {name:'Haiku · +rubydex', pct:106, cls:'mid', lbl:'+6%'},
+ {name:'Opus · grep（基準）', pct:100, cls:'win', lbl:'基準'},
+ {name:'Opus · +rubydex', pct:153, cls:'bad', lbl:'+53%'},
+];
+(function(){
+  const wrap=document.getElementById('costBars');
+  cost.forEach((r,i)=>{
+    const row=document.createElement('div'); row.className='bar-row';
+    row.innerHTML=`<div class="lbl">${r.name}</div><div><div class="track"><div class="fill ${r.cls}" style="width:0">${r.lbl}</div></div></div>`;
+    wrap.appendChild(row);
+    setTimeout(()=>{ row.querySelector('.fill').style.width=Math.min(100,r.pct/153*100)+'%'; }, 120+i*90);
+  });
+})();
+
+// ---- side nav scroll-spy ----
+(function(){
+  const links={};
+  document.querySelectorAll('.sidenav a').forEach(a=>links[a.getAttribute('href').slice(1)]=a);
+  const obs=new IntersectionObserver(entries=>{
+    entries.forEach(e=>{ if(e.isIntersecting){
+      Object.values(links).forEach(a=>a.classList.remove('active'));
+      if(links[e.target.id]) links[e.target.id].classList.add('active');
+    }});
+  },{rootMargin:'-45% 0px -50% 0px', threshold:0});
+  Object.keys(links).forEach(id=>{ const el=document.getElementById(id); if(el) obs.observe(el); });
+})();
+</script>
+</body>
+</html>
