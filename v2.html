@@ -248,8 +248,8 @@
 <header class="hero">
   <div class="wrap">
     <span class="kicker">Code-Search Benchmark · V2 · 2026</span>
-    <h1>放開手讓模型<em>自己選工具</em><br>rubydex 還幫得上忙嗎?</h1>
-    <p class="lede">V1 是「強迫用 rubydex vs 強迫用 grep」。<b>V2 改成最貼近真實的設定</b>:prompt 寫得最模糊、開放全部工具(含 Glob)、with/without <b>只差載不載入 MCP</b> —— 模型自己決定要不要呼叫 rubydex。另加一個對標官方的 <b>refactor 影響面</b> case。</p>
+    <h1>放開手讓模型<em>自己選工具</em><br>rubydex 帶來多少差別?</h1>
+    <p class="lede">V1 是「強迫用 rubydex vs 強迫用 grep」的對照。<b>V2 換成更貼近日常開發的設定</b>:prompt 寫得很模糊、開放全部工具(含 Glob)、with/without <b>只差載不載入 MCP</b> —— 由模型自己決定要不要呼叫 rubydex。另外補一個對標官方 benchmark 的 <b>refactor 影響面</b> case。這是 V1 的延伸觀察,不是要否定誰。</p>
     <div class="vswitch">
       <a href="./index.html">V1 報告</a>
       <a class="cur" href="./v2.html">V2 報告</a>
@@ -262,10 +262,10 @@
       <span>目標：<b>3 個生產 Rails 專案</b>（App-A / B / C）</span>
     </div>
     <div class="stats">
-      <div class="stat accent"><div class="n">0/18</div><div class="l">rubydex 提升 recall 的對照數（6 題×3 模型，僅 1 例外）</div></div>
-      <div class="stat"><div class="n">1.0→.64</div><div class="l">case-1 Opus:有 rubydex 在反而從滿分掉</div></div>
-      <div class="stat"><div class="n">+53%</div><div class="l">Opus 端成本（換不到 recall 好處）</div></div>
-      <div class="stat"><div class="n">0 次</div><div class="l">盲區題模型自動呼叫 rubydex 的次數</div></div>
+      <div class="stat accent"><div class="n">90</div><div class="l">結果點（15 題 × 3 模型 × 2 條件）</div></div>
+      <div class="stat"><div class="n">1/18</div><div class="l">18 組對照中，rubydex 提升 recall 的次數（此題庫）</div></div>
+      <div class="stat"><div class="n">1.00→0.64</div><div class="l">case-1 Opus：載入 rubydex 後的 recall 變化</div></div>
+      <div class="stat"><div class="n">+53%</div><div class="l">Opus 端載入 MCP 的成本增幅</div></div>
     </div>
   </div>
 </header>
@@ -274,9 +274,9 @@
   <div class="wrap">
     <div class="tldr">
       <span class="lab">一句話結論</span>
-      <p><strong>把 rubydex 丟進工具箱、不特別叫它用 —— 對 recall 一致中性偏負,成本混合,弱模型受害最大。</strong></p>
-      <p>6 個可機器計分的題裡,18 組 with/without 對照中 rubydex <strong>從沒提升 recall</strong>(唯一例外 codex case-1);卻屢屢拉低 —— 最戲劇的是 <strong>Opus case-1:沒 rubydex 拿滿分 1.00,有 rubydex 掉到 0.64</strong>。</p>
-      <p>但好消息:V1 的「rubydex 鎖死 Claude」與「信嚴格 AST 答錯」<strong>在 V2 都沒重演</strong> —— 自然選用下,模型會在 rubydex 沒用的題自己改走 grep。</p>
+      <p><strong>在自然選用下,把 rubydex 加進工具箱,對 recall 多半是中性、偶爾偏負;成本則有增有減,影響在較小的模型上比較明顯。</strong></p>
+      <p>6 個可機器計分的題、18 組 with/without 對照裡,rubydex <strong>幾乎沒有提升 recall</strong>(只有 1 個例外);偶爾還會略低 —— 比較明顯的是 <strong>Opus case-1:沒載 rubydex 拿滿分 1.00,載了之後 0.64</strong>。</p>
+      <p>另一個值得提的觀察:V1 看到的「Claude 卡在 rubydex 上」與「太信嚴格 AST 而答錯」<strong>在 V2 沒有再出現</strong> —— 自然選用下,模型會在 rubydex 派不上用場的題自己改走 grep。</p>
     </div>
   </div>
 </section>
@@ -322,14 +322,14 @@ hits_total: &lt;n&gt;  hits_A: &lt;n&gt;  hits_B: &lt;n&gt;  hits_C: &lt;n&gt;  
 每個給 file:line。漏一個都可能讓改名後在執行期壞掉，所以請盡量找全。</pre>
     <p class="note" style="margin-top:10px">真實 prompt 用各專案的中文業務語句與絕對路徑;此處比照 V1 換成中性虛構名(<code>Account::Profile#phone</code> 等),保留「給多少資訊」的結構,抽掉業務語意。</p>
 
-    <div class="callout"><span class="lab">為什麼這樣更準</span><p>V1 的「強迫用 rubydex」會製造人工假象(看到工具就硬用)。真實開發者不會被強迫;V2 的自然選用,才反映「裝了 rubydex 之後實際會發生什麼」。</p></div>
+    <div class="callout" style="border-left-color:var(--accent);background:var(--accent-soft)"><span class="lab" style="color:var(--accent)">為什麼想換成自然選用</span><p>「強迫用 rubydex」適合測「它能做到什麼」,但真實開發者不會被強迫用某個工具。V2 的自然選用,想看的是另一個問題:「裝了 rubydex 之後,日常使用實際會發生什麼」。兩種設定互補,不互相取代。</p></div>
   </div>
 </section>
 
 <section id="recall">
   <div class="wrap">
     <div class="sec-head"><span class="sec-num">02</span><h2>Recall 主表 — 6 個可機器計分的題</h2></div>
-    <p class="sub">這 6 題答案是「一組檔案 / 位置」,可自動算 recall(= 找到的 ground-truth 檔 / 應找到)。每格是該條件的 recall;<b>綠=滿分,越紅漏越多</b>。粉紅底=「有 rubydex 反而比沒有差」(recall-first 下最該警惕的)。</p>
+    <p class="sub">這 6 題答案是「一組檔案 / 位置」,可自動算 recall(= 找到的 ground-truth 檔 / 應找到)。每格是該條件的 recall;<b>綠=滿分,越紅漏越多</b>。粉紅底=「有 rubydex 反而比沒有低」(recall-first 下值得留意的格)。</p>
     <div class="tbl-wrap">
       <table class="hm" id="recallTable">
         <thead><tr>
@@ -342,9 +342,9 @@ hits_total: &lt;n&gt;  hits_A: &lt;n&gt;  hits_B: &lt;n&gt;  hits_C: &lt;n&gt;  
       </table>
     </div>
     <p class="note" style="margin-top:14px">「+rubydex」= MCP 載入但模型自己決定用不用。粉紅底格 = with &lt; without(rubydex 在場反而漏更多)。</p>
-    <div class="callout" style="border-left-color:var(--miss);background:var(--miss-bg)">
-      <span class="lab" style="color:var(--miss)">核心發現:rubydex 對 recall 一致中性偏負</span>
-      <p>18 組 with/without 對照中,rubydex <b>從沒提升 recall</b>(唯一例外:codex case-1,0.57→0.64)。反而多次拉低:Haiku case-1/2、Opus case-1。其餘多為打平(case-5/6/14 強模型端)。在「找全」這件事上,把 rubydex 放進工具箱沒有正貢獻。</p>
+    <div class="callout" style="border-left-color:var(--over);background:var(--over-bg)">
+      <span class="lab" style="color:var(--over)">觀察:這個題庫裡,rubydex 對 recall 多半中性、偶爾偏負</span>
+      <p>18 組 with/without 對照中,rubydex <b>幾乎沒有提升 recall</b>(只有 1 個例外:codex case-1,0.57→0.64)。少數情況還會略低:Haiku case-1/2、Opus case-1;其餘多半打平(case-5/6/14 在強模型端)。也就是說,在這組「找全」任務上,把 rubydex 放進工具箱沒看到 recall 上的正貢獻 —— 這跟它的設計強項(結構性常數查詢)不在同一類題有關。</p>
     </div>
   </div>
 </section>
@@ -355,31 +355,31 @@ hits_total: &lt;n&gt;  hits_A: &lt;n&gt;  hits_B: &lt;n&gt;  hits_C: &lt;n&gt;  
     <h3>把 rubydex 放工具箱要多付多少</h3>
     <p class="sub">整輪 15 題的總成本,with(載 MCP)對 without(不載):</p>
     <div class="bars" id="costBars"></div>
-    <p class="sub" style="margin-top:6px"><b>Opus 端貴 53%、卻換不到任何 recall 好處</b>。最毒單題 Opus case-1:貴近一倍、recall 還從 1.00 掉到 0.64。但成本是<b>混合的</b> —— 有些題 with 反而便宜(rubydex 給快答、省掉 grep 探索);一致的負面在 recall,不在成本。</p>
+    <p class="sub" style="margin-top:6px"><b>Opus 端整體貴約 53%</b>,在這些題沒看到對應的 recall 提升;比較明顯的單題是 Opus case-1(成本近一倍、recall 從 1.00 到 0.64)。不過成本是<b>有增有減</b>的 —— 有些題 with 反而便宜(rubydex 直接給答案、省掉 grep 探索)。整體看,recall 端比較一致地中性偏負,成本則因題而異。</p>
     <div class="callout" style="border-left-color:var(--good);background:var(--good-bg)">
-      <span class="lab" style="color:var(--good)">V2 最有價值的正面發現:模型會自己跳過 rubydex</span>
-      <p>放開限制後,在 rubydex 的盲區題(source_type 字串、callback symbol、i18n yaml),Haiku 與 Opus 的「+rubydex」那輪<b>呼叫 rubydex 的次數是 0</b> —— 它們自己改走 grep / bash。這直接推翻 V1「LLM 看到 rubydex 就誘惑性亂叫」的結論:<b>那是「強迫用」造成的假象</b>。自然選用下,模型只在 rubydex 強項題(多 namespace)才重用它。</p>
+      <span class="lab" style="color:var(--good)">一個正面發現:模型會自己判斷要不要用 rubydex</span>
+      <p>放開限制後,在 rubydex 看不到的題(source_type 字串、callback symbol、i18n yaml),Haiku 與 Opus 的「+rubydex」那輪<b>呼叫 rubydex 的次數是 0</b> —— 它們自己改走 grep / bash。這也補充了 V1 的觀察:V1 看到的「LLM 傾向過度呼叫 rubydex」,比較像是「強迫用」設定下的產物;自然選用時,模型多半只在 rubydex 的強項題(多 namespace)才會用它。</p>
     </div>
   </div>
 </section>
 
 <section id="case1">
   <div class="wrap">
-    <div class="sec-head"><span class="sec-num">04</span><h2>case-1 深潛:從「鎖死」到「偏食」</h2></div>
-    <p class="sub">has_one + delegate 鏈式(找全會碰到某個被委派屬性的點)—— V1 最戲劇的失敗,V2 變得更微妙也更真實。</p>
+    <div class="sec-head"><span class="sec-num">04</span><h2>case-1 深潛:從「卡住」到「偏食」</h2></div>
+    <p class="sub">has_one + delegate 鏈式(找全會碰到某個被委派屬性的點)—— V1 最受關注的一題,V2 的表現更微妙、也更貼近真實使用。</p>
     <div class="tbl-wrap">
       <table class="vt">
         <thead><tr><th>條件</th><th class="c">recall</th><th>行為</th></tr></thead>
         <tbody>
-          <tr class="hl-hurt"><td>V1 · 強迫 rubydex(Haiku/Opus)</td><td class="c"><span class="vbad">0 / 24</span></td><td>看到 rubydex 就狂打 MCP、不 fallback grep → 災難性鎖死,全漏</td></tr>
+          <tr class="hl-hurt"><td>V1 · 強迫 rubydex(Haiku/Opus)</td><td class="c"><span class="vbad">0 / 24</span></td><td>被要求只用 MCP、沒有 fallback grep → 卡在 rubydex 上、幾乎全漏</td></tr>
           <tr><td>V2 · Opus · grep(不載 MCP)</td><td class="c"><span class="vok">1.00</span></td><td>純 grep,找全(含 spec 檔)</td></tr>
           <tr class="hl-hurt"><td>V2 · Opus · +rubydex</td><td class="c"><span class="vpart">0.64</span></td><td>叫了 rubydex 2 次 + grep 3 次,<b>漏掉 5 個 spec 檔</b></td></tr>
         </tbody>
       </table>
     </div>
-    <div class="callout">
-      <span class="lab">敘事</span>
-      <p>自然選用<b>治好了 V1 的災難性鎖死</b>(0 → 0.64,模型會混 grep 了),<b>但 rubydex 在場仍把 recall 壓到 grep-only 基線之下</b> —— 它讓模型偏向語意結果、減少 grep 廣掃,漏掉 spec 那種 grep 才掃得到的角落。對 recall-first(漏報重罰)這是扣分項。</p>
+    <div class="callout" style="border-left-color:var(--accent);background:var(--accent-soft)">
+      <span class="lab" style="color:var(--accent)">怎麼解讀</span>
+      <p>自然選用<b>化解了 V1 那種「卡住全漏」</b>(0 → 0.64,模型會混用 grep 了);不過 rubydex 在場時,recall 還是<b>略低於純 grep 的基線</b> —— 它讓模型偏向語意結果、少做一點 grep 廣掃,於是漏掉 spec 那種要靠 grep 才掃得到的角落。對 recall-first(把漏報看得比較重)來說,這會略為扣分。</p>
     </div>
   </div>
 </section>
@@ -427,8 +427,8 @@ hits_total: &lt;n&gt;  hits_A: &lt;n&gt;  hits_B: &lt;n&gt;  hits_C: &lt;n&gt;  
         <p class="sub">Opus / Codex 在難題(source_type boss、字串引用、反推 controller#action)穩;Haiku 偏弱 —— 但弱在模型本身,不是 rubydex(這些題 Haiku 多半根本沒叫 rubydex)。</p>
       </div>
       <div class="col">
-        <h4>3 · V1 的陷阱都沒重演</h4>
-        <p class="sub">class_eval 的「信嚴格 AST 答 def 不存在」、case-1 的「鎖死」—— 自然選用 + 真的去讀原始碼之後,在 V2 全部消失。</p>
+        <h4>3 · V1 的幾個狀況沒再出現</h4>
+        <p class="sub">class_eval 的「太信嚴格 AST 而答 def 不存在」、case-1 的「卡住」—— 在自然選用 + 模型會真的去讀原始碼之後,V2 裡都沒再看到。</p>
       </div>
     </div>
   </div>
@@ -447,15 +447,16 @@ hits_total: &lt;n&gt;  hits_A: &lt;n&gt;  hits_B: &lt;n&gt;  hits_C: &lt;n&gt;  
         </ul>
       </div>
       <div class="col no">
-        <h4>✕ 別期待 / 反而扣分</h4>
+        <h4>△ 幫助有限 / 需留意</h4>
         <ul>
-          <li>丟著讓模型自選 —— recall 中性偏負 <span class="pill">case-1 · 2 · 13</span></li>
-          <li>弱模型(Haiku):rubydex 在場會讓它少 grep、漏 spec</li>
-          <li>文本 / 動態 / 外部資源 —— 模型自己就會跳過 rubydex</li>
+          <li>純丟著讓模型自選 —— recall 多半中性、偶爾偏負 <span class="pill">case-1 · 2 · 13</span></li>
+          <li>較小的模型(Haiku):rubydex 在場時容易少做 grep、漏掉 spec</li>
+          <li>文本 / 動態 / 外部資源 —— 模型通常會自己跳過 rubydex</li>
         </ul>
       </div>
     </div>
-    <p style="margin-top:22px">把題庫從「rubydex 強項任務」放寬到 15 種真實 Rails 手法、再把設定從「強迫」改成「自然選用」後:<b>官方 30–47% 的漂亮數字不再普遍成立</b>。rubydex 的價值高度集中在「對的題 + 對的模型 + 明確指示」這個窄帶;無腦全掛、丟著讓它自選,對 recall 沒有正貢獻、在 Opus 端還貴 53%。<b>純 LLM(尤其放開 grep/Glob/bash)的程式碼搜尋能力,被低估了。</b></p>
+    <p style="margin-top:22px">官方公布的 30–47% 提升,是在 rubydex 最擅長的任務(IRB 常數 rename)上量到的,很有參考價值。本實驗想補充的是另一個角度:把題庫放寬到 15 種真實 Rails 手法、再讓模型自然選用後,<b>這樣的優勢在我們的題庫裡就沒那麼普遍</b>。rubydex 的價值比較集中在「對的題(多 namespace 常數)+ 對的模型 + 明確指示」;若只是默認全掛、丟著讓它自選,在這個題庫沒看到 recall 上的好處,Opus 端成本還高一些。反過來說,<b>放開 grep / Glob / bash 之後,純 LLM 的程式碼搜尋能力,其實比想像中更穩。</b></p>
+    <div class="callout" style="border-left-color:var(--accent);background:var(--accent-soft)"><span class="lab" style="color:var(--accent)">小提醒</span><p>這些結論只在「本題庫 + 自然選用 + 這三個模型」的範圍內成立,屬於 V1 的延伸觀察,不是對 rubydex 或官方 benchmark 的否定。不同題型、不同用法很可能得到不同結果 —— 歡迎在自己的 codebase 上試。</p></div>
   </div>
 </section>
 
