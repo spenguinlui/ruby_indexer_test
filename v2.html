@@ -299,6 +299,29 @@
         <p class="sub">對標官方唯一沒涵蓋的「真的改 code」維度。改問「rename 一個 class 的完整影響清單」,對 ground-truth 影響集算 recall(不跑測試、不依賴 DB)。</p>
       </div>
     </div>
+
+    <h3>prompt 長相對比（示意，已匿名）</h3>
+    <p class="sub">同一題(找全會真正呼叫到某個「被委派出去的屬性」的地方),V1 把答案形狀都講白了;V2 只留一句自然語句。</p>
+    <pre><span class="cm"># ── V1（詳細）：給 FQN + def 位置 + 4 種分類 + 固定回報格式 ──</span>
+請用 <span class="hi">rubydex MCP</span>（不要用 grep）。   <span class="cm"># with</span>     請用 <span class="hi">Grep / Read</span>（不要用 MCP）。   <span class="cm"># without</span>
+目標 method：<span class="hi">Account::Profile#phone</span>（定義在 .../profile.rb:NN）
+列出所有真正呼叫到它的點，分四類：
+  A) 直接 profile.phone   B) user.profile.phone（關聯）
+  C) presenter delegate（隱式）   D) send(:phone) 動態
+RESULT_SUMMARY:
+hits_total: &lt;n&gt;  hits_A: &lt;n&gt;  hits_B: &lt;n&gt;  hits_C: &lt;n&gt;  hits_D: &lt;n&gt;
+
+<span class="cm"># ── V2（模糊）：一句話。不給 FQN / 路徑 / 形式 / 排除 / 回報格式 ──</span>
+<span class="cm"># with 與 without 的 prompt 文字「完全相同」，只差執行時載不載 MCP</span>
+在 <span class="hi">App-A</span> 這個專案裡，Account 的 profile 上有個 phone 欄位。
+我想知道整個專案裡，實際上有哪些地方會真正呼叫到這個 phone？
+幫我找全，每個給 file:line。</pre>
+    <p class="sub" style="margin-top:14px"><b>refactor case 的 V2 prompt</b>（同樣只給一句,連改名對象都只點到 class、不給檔案):</p>
+    <pre>在 <span class="hi">App-A</span> 裡，我打算把某 domain 下的一個 <span class="hi">repository class</span> 改名。
+動手前我想先拿到完整的「改名影響清單」：這次改名總共要動到哪些檔案、哪些行？
+每個給 file:line。漏一個都可能讓改名後在執行期壞掉，所以請盡量找全。</pre>
+    <p class="note" style="margin-top:10px">真實 prompt 用各專案的中文業務語句與絕對路徑;此處比照 V1 換成中性虛構名(<code>Account::Profile#phone</code> 等),保留「給多少資訊」的結構,抽掉業務語意。</p>
+
     <div class="callout"><span class="lab">為什麼這樣更準</span><p>V1 的「強迫用 rubydex」會製造人工假象(看到工具就硬用)。真實開發者不會被強迫;V2 的自然選用,才反映「裝了 rubydex 之後實際會發生什麼」。</p></div>
   </div>
 </section>
