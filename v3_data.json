@@ -1,0 +1,917 @@
+{
+  "haiku": {
+    "kind": "claude",
+    "cases": {
+      "case-1_has-one-delegate": {
+        "C0w": {
+          "recall": 0.786,
+          "reads": 1,
+          "rel": 0,
+          "prec": 0.0,
+          "grep": 1,
+          "rubydex": 1,
+          "out_tok": 2202,
+          "cost": 0.08016979999999999,
+          "total_ctx": 202283,
+          "turns": 5
+        },
+        "C0": {
+          "recall": 0.571,
+          "reads": 1,
+          "rel": 0,
+          "prec": 0.0,
+          "grep": 1,
+          "rubydex": 0,
+          "out_tok": 6120,
+          "cost": 0.07304000000000001,
+          "total_ctx": 120410,
+          "turns": 3
+        },
+        "C1": {
+          "recall": 0.857,
+          "reads": 17,
+          "rel": 8,
+          "prec": 0.47058823529411764,
+          "grep": 8,
+          "rubydex": 0,
+          "out_tok": 8876,
+          "cost": 0.1873096,
+          "total_ctx": 896559,
+          "turns": 26
+        },
+        "C2": {
+          "recall": 0.643,
+          "reads": 1,
+          "rel": 0,
+          "prec": 0.0,
+          "grep": 8,
+          "rubydex": 0,
+          "out_tok": 6908,
+          "cost": 0.1415975,
+          "total_ctx": 611140,
+          "turns": 11
+        }
+      },
+      "case-2_aasm-dynamic": {
+        "C0w": {
+          "recall": 0.917,
+          "reads": 5,
+          "rel": 2,
+          "prec": 0.4,
+          "grep": 8,
+          "rubydex": 4,
+          "out_tok": 4926,
+          "cost": 0.10456225000000002,
+          "total_ctx": 486546,
+          "turns": 18
+        },
+        "C0": {
+          "recall": 0.833,
+          "reads": 0,
+          "rel": 0,
+          "prec": null,
+          "grep": 0,
+          "rubydex": 0,
+          "out_tok": 3476,
+          "cost": 0.20359845,
+          "total_ctx": 69286,
+          "turns": 2
+        },
+        "C1": {
+          "recall": 1.0,
+          "reads": 18,
+          "rel": 12,
+          "prec": 0.6666666666666666,
+          "grep": 15,
+          "rubydex": 0,
+          "out_tok": 11093,
+          "cost": 0.21256499999999998,
+          "total_ctx": 1101664,
+          "turns": 40
+        },
+        "C2": {
+          "recall": 1.0,
+          "reads": 7,
+          "rel": 4,
+          "prec": 0.5714285714285714,
+          "grep": 0,
+          "rubydex": 0,
+          "out_tok": 7611,
+          "cost": 0.15101175,
+          "total_ctx": 826193,
+          "turns": 20
+        }
+      },
+      "case-5_sidekiq-yaml": {
+        "C0w": {
+          "recall": 1.0,
+          "reads": 1,
+          "rel": 1,
+          "prec": 1.0,
+          "grep": 2,
+          "rubydex": 3,
+          "out_tok": 2875,
+          "cost": 0.07359885,
+          "total_ctx": 414265,
+          "turns": 10
+        },
+        "C0": {
+          "recall": 1.0,
+          "reads": 1,
+          "rel": 1,
+          "prec": 1.0,
+          "grep": 2,
+          "rubydex": 0,
+          "out_tok": 1489,
+          "cost": 0.029937550000000004,
+          "total_ctx": 128269,
+          "turns": 4
+        },
+        "C1": {
+          "recall": 1.0,
+          "reads": 2,
+          "rel": 2,
+          "prec": 1.0,
+          "grep": 6,
+          "rubydex": 0,
+          "out_tok": 2435,
+          "cost": 0.05095185,
+          "total_ctx": 237154,
+          "turns": 10
+        },
+        "C2": {
+          "recall": 1.0,
+          "reads": 3,
+          "rel": 2,
+          "prec": 0.6666666666666666,
+          "grep": 8,
+          "rubydex": 0,
+          "out_tok": 3718,
+          "cost": 0.07555525,
+          "total_ctx": 384800,
+          "turns": 13
+        }
+      },
+      "case-6_object-monkey-patch": {
+        "C0w": {
+          "recall": 1.0,
+          "reads": 1,
+          "rel": 1,
+          "prec": 1.0,
+          "grep": 2,
+          "rubydex": 2,
+          "out_tok": 1523,
+          "cost": 0.036832449999999996,
+          "total_ctx": 160518,
+          "turns": 6
+        },
+        "C0": {
+          "recall": 1.0,
+          "reads": 1,
+          "rel": 1,
+          "prec": 1.0,
+          "grep": 2,
+          "rubydex": 0,
+          "out_tok": 1203,
+          "cost": 0.025082550000000002,
+          "total_ctx": 96117,
+          "turns": 4
+        },
+        "C1": {
+          "recall": 1.0,
+          "reads": 0,
+          "rel": 0,
+          "prec": null,
+          "grep": 2,
+          "rubydex": 0,
+          "out_tok": 973,
+          "cost": 0.02553925,
+          "total_ctx": 97849,
+          "turns": 3
+        },
+        "C2": {
+          "recall": 1.0,
+          "reads": 2,
+          "rel": 2,
+          "prec": 1.0,
+          "grep": 3,
+          "rubydex": 2,
+          "out_tok": 2928,
+          "cost": 0.06608125,
+          "total_ctx": 339992,
+          "turns": 8
+        }
+      },
+      "case-13_hash-dispatch": {
+        "C0w": {
+          "recall": 1.0,
+          "reads": 7,
+          "rel": 4,
+          "prec": 0.5714285714285714,
+          "grep": 11,
+          "rubydex": 0,
+          "out_tok": 7577,
+          "cost": 0.20120390000000005,
+          "total_ctx": 1272196,
+          "turns": 26
+        },
+        "C0": {
+          "recall": 0.5,
+          "reads": 4,
+          "rel": 2,
+          "prec": 0.5,
+          "grep": 5,
+          "rubydex": 0,
+          "out_tok": 8287,
+          "cost": 0.15841624999999998,
+          "total_ctx": 720487,
+          "turns": 28
+        },
+        "C1": {
+          "recall": 1.0,
+          "reads": 4,
+          "rel": 4,
+          "prec": 1.0,
+          "grep": 7,
+          "rubydex": 0,
+          "out_tok": 5239,
+          "cost": 0.09347659999999999,
+          "total_ctx": 428181,
+          "turns": 19
+        },
+        "C2": {
+          "recall": 1.0,
+          "reads": 8,
+          "rel": 4,
+          "prec": 0.5,
+          "grep": 6,
+          "rubydex": 0,
+          "out_tok": 7681,
+          "cost": 0.19515875000000002,
+          "total_ctx": 1231295,
+          "turns": 25
+        }
+      },
+      "case-14_rename-impact": {
+        "C0w": {
+          "recall": 0.882,
+          "reads": 0,
+          "rel": 0,
+          "prec": null,
+          "grep": 0,
+          "rubydex": 2,
+          "out_tok": 1666,
+          "cost": 0.0281023,
+          "total_ctx": 79996,
+          "turns": 3
+        },
+        "C0": {
+          "recall": 1.0,
+          "reads": 17,
+          "rel": 17,
+          "prec": 1.0,
+          "grep": 8,
+          "rubydex": 0,
+          "out_tok": 8551,
+          "cost": 0.14052455,
+          "total_ctx": 659035,
+          "turns": 30
+        },
+        "C1": {
+          "recall": 1.0,
+          "reads": 19,
+          "rel": 17,
+          "prec": 0.8947368421052632,
+          "grep": 7,
+          "rubydex": 0,
+          "out_tok": 6571,
+          "cost": 0.12058539999999998,
+          "total_ctx": 493010,
+          "turns": 29
+        },
+        "C2": {
+          "recall": 1.0,
+          "reads": 2,
+          "rel": 2,
+          "prec": 1.0,
+          "grep": 4,
+          "rubydex": 2,
+          "out_tok": 4889,
+          "cost": 0.06821615,
+          "total_ctx": 222823,
+          "turns": 10
+        }
+      }
+    }
+  },
+  "opus-low": {
+    "kind": "claude",
+    "cases": {
+      "case-1_has-one-delegate": {
+        "C0w": {
+          "recall": 0.643,
+          "reads": 9,
+          "rel": 4,
+          "prec": 0.4444444444444444,
+          "grep": 4,
+          "rubydex": 1,
+          "out_tok": 16120,
+          "cost": 0.996357,
+          "total_ctx": 433022,
+          "turns": 16
+        },
+        "C0": {
+          "recall": 0.643,
+          "reads": 3,
+          "rel": 1,
+          "prec": 0.3333333333333333,
+          "grep": 5,
+          "rubydex": 0,
+          "out_tok": 7784,
+          "cost": 0.4323125,
+          "total_ctx": 141783,
+          "turns": 9
+        },
+        "C1": {
+          "recall": 0.643,
+          "reads": 3,
+          "rel": 0,
+          "prec": 0.0,
+          "grep": 7,
+          "rubydex": 0,
+          "out_tok": 7767,
+          "cost": 0.42963575,
+          "total_ctx": 149508,
+          "turns": 11
+        },
+        "C2": {
+          "recall": 0.643,
+          "reads": 7,
+          "rel": 0,
+          "prec": 0.0,
+          "grep": 4,
+          "rubydex": 0,
+          "out_tok": 13034,
+          "cost": 0.7119845,
+          "total_ctx": 287753,
+          "turns": 12
+        }
+      },
+      "case-2_aasm-dynamic": {
+        "C0w": {
+          "recall": 0.917,
+          "reads": 6,
+          "rel": 4,
+          "prec": 0.6666666666666666,
+          "grep": 11,
+          "rubydex": 3,
+          "out_tok": 11532,
+          "cost": 0.7856617499999999,
+          "total_ctx": 512903,
+          "turns": 22
+        },
+        "C0": {
+          "recall": 0.833,
+          "reads": 0,
+          "rel": 0,
+          "prec": null,
+          "grep": 0,
+          "rubydex": 0,
+          "out_tok": 7173,
+          "cost": 0.38105775000000003,
+          "total_ctx": 209432,
+          "turns": 10
+        },
+        "C1": {
+          "recall": 0.917,
+          "reads": 4,
+          "rel": 3,
+          "prec": 0.75,
+          "grep": 10,
+          "rubydex": 0,
+          "out_tok": 6549,
+          "cost": 0.41429325,
+          "total_ctx": 275276,
+          "turns": 16
+        },
+        "C2": {
+          "recall": 0.917,
+          "reads": 6,
+          "rel": 3,
+          "prec": 0.5,
+          "grep": 10,
+          "rubydex": 0,
+          "out_tok": 8046,
+          "cost": 0.59652975,
+          "total_ctx": 413892,
+          "turns": 19
+        }
+      },
+      "case-5_sidekiq-yaml": {
+        "C0w": {
+          "recall": 1.0,
+          "reads": 1,
+          "rel": 1,
+          "prec": 1.0,
+          "grep": 3,
+          "rubydex": 2,
+          "out_tok": 1736,
+          "cost": 0.20096000000000003,
+          "total_ctx": 118712,
+          "turns": 8
+        },
+        "C0": {
+          "recall": 1.0,
+          "reads": 2,
+          "rel": 2,
+          "prec": 1.0,
+          "grep": 2,
+          "rubydex": 0,
+          "out_tok": 1293,
+          "cost": 0.108027,
+          "total_ctx": 63001,
+          "turns": 5
+        },
+        "C1": {
+          "recall": 1.0,
+          "reads": 2,
+          "rel": 2,
+          "prec": 1.0,
+          "grep": 2,
+          "rubydex": 0,
+          "out_tok": 1315,
+          "cost": 0.09287875,
+          "total_ctx": 63696,
+          "turns": 5
+        },
+        "C2": {
+          "recall": 1.0,
+          "reads": 2,
+          "rel": 2,
+          "prec": 1.0,
+          "grep": 2,
+          "rubydex": 1,
+          "out_tok": 2243,
+          "cost": 0.20019749999999997,
+          "total_ctx": 81162,
+          "turns": 7
+        }
+      },
+      "case-6_object-monkey-patch": {
+        "C0w": {
+          "recall": 1.0,
+          "reads": 1,
+          "rel": 1,
+          "prec": 1.0,
+          "grep": 1,
+          "rubydex": 1,
+          "out_tok": 1751,
+          "cost": 0.16422350000000002,
+          "total_ctx": 58232,
+          "turns": 5
+        },
+        "C0": {
+          "recall": 1.0,
+          "reads": 1,
+          "rel": 1,
+          "prec": 1.0,
+          "grep": 3,
+          "rubydex": 0,
+          "out_tok": 1603,
+          "cost": 0.10782599999999999,
+          "total_ctx": 48116,
+          "turns": 5
+        },
+        "C1": {
+          "recall": 1.0,
+          "reads": 1,
+          "rel": 1,
+          "prec": 1.0,
+          "grep": 2,
+          "rubydex": 0,
+          "out_tok": 1339,
+          "cost": 0.09754675,
+          "total_ctx": 47532,
+          "turns": 4
+        },
+        "C2": {
+          "recall": 1.0,
+          "reads": 1,
+          "rel": 1,
+          "prec": 1.0,
+          "grep": 3,
+          "rubydex": 0,
+          "out_tok": 1494,
+          "cost": 0.14791474999999998,
+          "total_ctx": 76136,
+          "turns": 5
+        }
+      },
+      "case-13_hash-dispatch": {
+        "C0w": {
+          "recall": 1.0,
+          "reads": 2,
+          "rel": 1,
+          "prec": 0.5,
+          "grep": 6,
+          "rubydex": 4,
+          "out_tok": 6375,
+          "cost": 0.645159,
+          "total_ctx": 288622,
+          "turns": 14
+        },
+        "C0": {
+          "recall": 1.0,
+          "reads": 1,
+          "rel": 1,
+          "prec": 1.0,
+          "grep": 3,
+          "rubydex": 0,
+          "out_tok": 3542,
+          "cost": 0.38710435000000004,
+          "total_ctx": 71465,
+          "turns": 6
+        },
+        "C1": {
+          "recall": 0.5,
+          "reads": 3,
+          "rel": 2,
+          "prec": 0.6666666666666666,
+          "grep": 4,
+          "rubydex": 0,
+          "out_tok": 3235,
+          "cost": 0.4688043000000002,
+          "total_ctx": 74479,
+          "turns": 9
+        },
+        "C2": {
+          "recall": 0.75,
+          "reads": 5,
+          "rel": 3,
+          "prec": 0.6,
+          "grep": 7,
+          "rubydex": 1,
+          "out_tok": 5271,
+          "cost": 0.53670675,
+          "total_ctx": 181704,
+          "turns": 15
+        }
+      },
+      "case-14_rename-impact": {
+        "C0w": {
+          "recall": 1.0,
+          "reads": 0,
+          "rel": 0,
+          "prec": null,
+          "grep": 1,
+          "rubydex": 2,
+          "out_tok": 4481,
+          "cost": 0.26784600000000003,
+          "total_ctx": 85765,
+          "turns": 5
+        },
+        "C0": {
+          "recall": 1.0,
+          "reads": 1,
+          "rel": 1,
+          "prec": 1.0,
+          "grep": 4,
+          "rubydex": 0,
+          "out_tok": 4809,
+          "cost": 0.2399155,
+          "total_ctx": 81398,
+          "turns": 8
+        },
+        "C1": {
+          "recall": 1.0,
+          "reads": 1,
+          "rel": 1,
+          "prec": 1.0,
+          "grep": 3,
+          "rubydex": 0,
+          "out_tok": 3097,
+          "cost": 0.18176175,
+          "total_ctx": 74818,
+          "turns": 6
+        },
+        "C2": {
+          "recall": 1.0,
+          "reads": 1,
+          "rel": 1,
+          "prec": 1.0,
+          "grep": 4,
+          "rubydex": 1,
+          "out_tok": 6016,
+          "cost": 0.33142675,
+          "total_ctx": 96152,
+          "turns": 8
+        }
+      }
+    }
+  },
+  "codex-gpt-5.5": {
+    "kind": "codex",
+    "cases": {
+      "case-1_has-one-delegate": {
+        "C0w": {
+          "recall": 1.0,
+          "reads": 22,
+          "rel": 7,
+          "prec": 0.3181818181818182,
+          "grep": 10,
+          "rubydex": 3,
+          "out_tok": 6526,
+          "cost": null,
+          "total_ctx": 92331,
+          "fresh_in": 85805
+        },
+        "C0": {
+          "recall": 0.643,
+          "reads": 17,
+          "rel": 4,
+          "prec": 0.23529411764705882,
+          "grep": 14,
+          "rubydex": 0,
+          "out_tok": 8918,
+          "cost": null,
+          "total_ctx": 118112,
+          "fresh_in": 109194
+        },
+        "C1": {
+          "recall": 0.643,
+          "reads": 37,
+          "rel": 9,
+          "prec": 0.24324324324324326,
+          "grep": 12,
+          "rubydex": 0,
+          "out_tok": 9367,
+          "cost": null,
+          "total_ctx": 115586,
+          "fresh_in": 106219
+        },
+        "C2": {
+          "recall": 0.643,
+          "reads": 36,
+          "rel": 9,
+          "prec": 0.25,
+          "grep": 8,
+          "rubydex": 4,
+          "out_tok": 10436,
+          "cost": null,
+          "total_ctx": 89212,
+          "fresh_in": 78776
+        }
+      },
+      "case-2_aasm-dynamic": {
+        "C0w": {
+          "recall": 0.833,
+          "reads": 13,
+          "rel": 11,
+          "prec": 0.8461538461538461,
+          "grep": 12,
+          "rubydex": 0,
+          "out_tok": 5351,
+          "cost": null,
+          "total_ctx": 151952,
+          "fresh_in": 146601
+        },
+        "C0": {
+          "recall": 1.0,
+          "reads": 21,
+          "rel": 13,
+          "prec": 0.6190476190476191,
+          "grep": 9,
+          "rubydex": 0,
+          "out_tok": 7518,
+          "cost": null,
+          "total_ctx": 94783,
+          "fresh_in": 87265
+        },
+        "C1": {
+          "recall": 0.833,
+          "reads": 16,
+          "rel": 11,
+          "prec": 0.6875,
+          "grep": 10,
+          "rubydex": 0,
+          "out_tok": 6569,
+          "cost": null,
+          "total_ctx": 68183,
+          "fresh_in": 61614
+        },
+        "C2": {
+          "recall": 0.917,
+          "reads": 13,
+          "rel": 11,
+          "prec": 0.8461538461538461,
+          "grep": 8,
+          "rubydex": 6,
+          "out_tok": 6844,
+          "cost": null,
+          "total_ctx": 71282,
+          "fresh_in": 64438
+        }
+      },
+      "case-5_sidekiq-yaml": {
+        "C0w": {
+          "recall": 1.0,
+          "reads": 3,
+          "rel": 2,
+          "prec": 0.6666666666666666,
+          "grep": 3,
+          "rubydex": 2,
+          "out_tok": 1697,
+          "cost": null,
+          "total_ctx": 24401,
+          "fresh_in": 22704
+        },
+        "C0": {
+          "recall": 1.0,
+          "reads": 2,
+          "rel": 2,
+          "prec": 1.0,
+          "grep": 4,
+          "rubydex": 0,
+          "out_tok": 1574,
+          "cost": null,
+          "total_ctx": 8235,
+          "fresh_in": 6661
+        },
+        "C1": {
+          "recall": 1.0,
+          "reads": 5,
+          "rel": 2,
+          "prec": 0.4,
+          "grep": 6,
+          "rubydex": 0,
+          "out_tok": 2736,
+          "cost": null,
+          "total_ctx": 25277,
+          "fresh_in": 22541
+        },
+        "C2": {
+          "recall": 1.0,
+          "reads": 2,
+          "rel": 2,
+          "prec": 1.0,
+          "grep": 4,
+          "rubydex": 3,
+          "out_tok": 2338,
+          "cost": null,
+          "total_ctx": 32568,
+          "fresh_in": 30230
+        }
+      },
+      "case-6_object-monkey-patch": {
+        "C0w": {
+          "recall": 1.0,
+          "reads": 2,
+          "rel": 2,
+          "prec": 1.0,
+          "grep": 3,
+          "rubydex": 3,
+          "out_tok": 1349,
+          "cost": null,
+          "total_ctx": 22740,
+          "fresh_in": 21391
+        },
+        "C0": {
+          "recall": 1.0,
+          "reads": 2,
+          "rel": 2,
+          "prec": 1.0,
+          "grep": 2,
+          "rubydex": 0,
+          "out_tok": 840,
+          "cost": null,
+          "total_ctx": 3135,
+          "fresh_in": 2295
+        },
+        "C1": {
+          "recall": 1.0,
+          "reads": 2,
+          "rel": 2,
+          "prec": 1.0,
+          "grep": 5,
+          "rubydex": 0,
+          "out_tok": 1743,
+          "cost": null,
+          "total_ctx": 7347,
+          "fresh_in": 5604
+        },
+        "C2": {
+          "recall": 1.0,
+          "reads": 2,
+          "rel": 2,
+          "prec": 1.0,
+          "grep": 2,
+          "rubydex": 6,
+          "out_tok": 2008,
+          "cost": null,
+          "total_ctx": 20613,
+          "fresh_in": 18605
+        }
+      },
+      "case-13_hash-dispatch": {
+        "C0w": {
+          "recall": 1.0,
+          "reads": 13,
+          "rel": 4,
+          "prec": 0.3076923076923077,
+          "grep": 8,
+          "rubydex": 7,
+          "out_tok": 5687,
+          "cost": null,
+          "total_ctx": 72826,
+          "fresh_in": 67139
+        },
+        "C0": {
+          "recall": 1.0,
+          "reads": 14,
+          "rel": 4,
+          "prec": 0.2857142857142857,
+          "grep": 16,
+          "rubydex": 0,
+          "out_tok": 9073,
+          "cost": null,
+          "total_ctx": 108403,
+          "fresh_in": 99330
+        },
+        "C1": {
+          "recall": 1.0,
+          "reads": 14,
+          "rel": 4,
+          "prec": 0.2857142857142857,
+          "grep": 15,
+          "rubydex": 0,
+          "out_tok": 7089,
+          "cost": null,
+          "total_ctx": 101297,
+          "fresh_in": 94208
+        },
+        "C2": {
+          "recall": 1.0,
+          "reads": 12,
+          "rel": 4,
+          "prec": 0.3333333333333333,
+          "grep": 12,
+          "rubydex": 4,
+          "out_tok": 7729,
+          "cost": null,
+          "total_ctx": 104488,
+          "fresh_in": 96759
+        }
+      },
+      "case-14_rename-impact": {
+        "C0w": {
+          "recall": 1.0,
+          "reads": 0,
+          "rel": 0,
+          "prec": null,
+          "grep": 7,
+          "rubydex": 2,
+          "out_tok": 3331,
+          "cost": null,
+          "total_ctx": 44226,
+          "fresh_in": 40895
+        },
+        "C0": {
+          "recall": 1.0,
+          "reads": 3,
+          "rel": 3,
+          "prec": 1.0,
+          "grep": 10,
+          "rubydex": 0,
+          "out_tok": 4491,
+          "cost": null,
+          "total_ctx": 82818,
+          "fresh_in": 78327
+        },
+        "C1": {
+          "recall": 1.0,
+          "reads": 11,
+          "rel": 11,
+          "prec": 1.0,
+          "grep": 7,
+          "rubydex": 0,
+          "out_tok": 3819,
+          "cost": null,
+          "total_ctx": 66919,
+          "fresh_in": 63100
+        },
+        "C2": {
+          "recall": 1.0,
+          "reads": 4,
+          "rel": 3,
+          "prec": 0.75,
+          "grep": 10,
+          "rubydex": 4,
+          "out_tok": 4260,
+          "cost": null,
+          "total_ctx": 60314,
+          "fresh_in": 56054
+        }
+      }
+    }
+  }
+}

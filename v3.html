@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rubydex Benchmark V3 — 把 rubydex 當「選擇器」,全 15 題 × 3 模型,對比 V2</title>
+<meta name="description" content="V3:V1 強迫用工具、V2 把 rubydex 丟工具箱、V3 = 一個會自己選工具的 selector(先廣 grep、結構題才用 rubydex 驗證)。全 15 題 × 3 模型,跟 V2 的 grep-only / rubydex-available 同一把尺重判。結論:給模型 rubydex(可用或路由)在三個模型上都比純 grep 好,且越弱的模型幫越多;但 prompt 層的『選擇器』路由不可靠,真正該做的是外層 orchestrator。6 機器題 file-recall + 9 value 題 co-judge。n=1。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#f4efe6; --card:#fbf9f4; --ink:#211f1c; --muted:#6b6358;
+    --line:#e2d9c8; --line-strong:#ccc0a8;
+    --accent:#0f766e; --accent-soft:#cfeae6;
+    --good:#15803d; --good-bg:#dcfce7; --good-line:#a7e3bc;
+    --miss:#b91c1c; --miss-bg:#fde2e2; --miss-line:#f3b4b4;
+    --over:#b45309; --over-bg:#fdeccf; --over-line:#eecb8e;
+    --mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+    --disp:'Space Grotesk',system-ui,sans-serif;
+    --body:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC",sans-serif;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0; font-family:var(--body); color:var(--ink); line-height:1.65;
+    background:
+      radial-gradient(1200px 600px at 80% -10%, #fbf6ec 0%, rgba(251,246,236,0) 60%),
+      radial-gradient(900px 500px at -10% 10%, #f1ece0 0%, rgba(241,236,224,0) 55%),
+      var(--paper);
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1080px; margin:0 auto; padding:0 24px}
+  a{color:var(--accent); text-underline-offset:3px}
+
+  .sidenav{position:fixed; left:24px; top:50%; transform:translateY(-50%); z-index:60;
+    display:flex; flex-direction:column; gap:1px;
+    background:rgba(255,255,255,.6); backdrop-filter:blur(12px) saturate(1.1); -webkit-backdrop-filter:blur(12px) saturate(1.1);
+    border:1px solid rgba(255,255,255,.8); box-shadow:0 10px 34px rgba(40,30,10,.12); border-radius:16px; padding:9px}
+  .sidenav-h{font-family:var(--mono); font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:var(--muted); padding:4px 12px 7px}
+  .sidenav a{display:flex; align-items:center; gap:10px; text-decoration:none; color:var(--muted);
+    padding:7px 14px 7px 11px; border-radius:10px; font-family:var(--mono); font-size:12px; line-height:1; white-space:nowrap; transition:background .15s,color .15s}
+  .sidenav .dot{width:6px; height:6px; border-radius:50%; background:var(--line-strong); transition:all .2s; flex:0 0 auto}
+  .sidenav a:hover{background:rgba(255,255,255,.72)}
+  .sidenav a:hover .lbl{color:var(--ink)}
+  .sidenav a.active{background:var(--accent-soft)}
+  .sidenav a.active .dot{background:var(--accent); transform:scale(1.35)}
+  .sidenav a.active .lbl{color:var(--accent); font-weight:600}
+  @media(max-width:1340px){ .sidenav{display:none} }
+
+  header.hero{padding:72px 0 40px; border-bottom:1px solid var(--line)}
+  .kicker{font-family:var(--mono); font-size:12.5px; letter-spacing:.16em; text-transform:uppercase;
+    color:var(--accent); display:inline-flex; align-items:center; gap:9px}
+  .kicker::before{content:""; width:26px; height:1px; background:var(--accent)}
+  h1{font-family:var(--disp); font-weight:700; font-size:clamp(34px,5.4vw,58px);
+    line-height:1.04; letter-spacing:-.02em; margin:18px 0 0}
+  h1 em{font-style:normal; color:var(--accent)}
+  .lede{font-size:clamp(16px,2.1vw,20px); color:var(--muted); max-width:760px; margin:20px 0 0}
+  .meta{font-family:var(--mono); font-size:12.5px; color:var(--muted); margin-top:22px; display:flex; flex-wrap:wrap; gap:6px 18px}
+  .meta b{color:var(--ink); font-weight:500}
+
+  .stats{display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin:38px 0 0}
+  .stat{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px 18px 16px}
+  .stat .n{font-family:var(--disp); font-weight:700; font-size:29px; line-height:1; letter-spacing:-.02em}
+  .stat .l{font-size:12.5px; color:var(--muted); margin-top:8px}
+  .stat.accent .n{color:var(--accent)}
+  .stat.bad .n{color:var(--miss)}
+
+  section{padding:54px 0; border-bottom:1px solid var(--line)}
+  .sec-head{display:flex; align-items:baseline; gap:14px; margin:0 0 22px}
+  .sec-num{font-family:var(--mono); font-size:13px; color:var(--accent); font-weight:500}
+  h2{font-family:var(--disp); font-weight:600; font-size:clamp(23px,3.2vw,30px); letter-spacing:-.01em; margin:0}
+  h3{font-family:var(--disp); font-weight:600; font-size:18px; margin:30px 0 12px}
+  p{margin:0 0 14px}
+  .sub{color:var(--muted)}
+
+  .tldr{background:linear-gradient(180deg,#15433f,#0f2f2c); color:#eafaf6; border-radius:18px;
+    padding:30px 32px; font-size:clamp(16px,2.1vw,19px); line-height:1.6}
+  .tldr .lab{font-family:var(--mono); font-size:12px; letter-spacing:.16em; text-transform:uppercase; color:#79d8c9}
+  .tldr strong{color:#fff}
+  .tldr p{margin:12px 0 0}
+  .tldr p:first-of-type{margin-top:14px}
+
+  .callout{border-left:3px solid var(--miss); background:var(--miss-bg); border-radius:0 12px 12px 0;
+    padding:16px 20px; margin:20px 0}
+  .callout .lab{font-family:var(--mono); font-size:11.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--miss); font-weight:700}
+  .callout p{margin:6px 0 0; font-size:15px}
+  .callout.acc{border-left-color:var(--accent); background:var(--accent-soft)}
+  .callout.acc .lab{color:var(--accent)}
+  .callout.warn{border-left-color:var(--over); background:var(--over-bg)}
+  .callout.warn .lab{color:var(--over)}
+
+  .tbl-wrap{overflow-x:auto; border:1px solid var(--line); border-radius:14px; background:var(--card)}
+  table{border-collapse:collapse; width:100%; font-size:14px}
+  th,td{padding:11px 13px; text-align:left; border-bottom:1px solid var(--line); white-space:nowrap}
+  thead th{font-family:var(--mono); font-size:11.5px; letter-spacing:.04em; text-transform:uppercase;
+    color:var(--muted); font-weight:500; background:#f7f2e8}
+  tbody tr:last-child td{border-bottom:none}
+  tbody tr:hover{background:#f7f2e8}
+  td.tech{white-space:normal; min-width:160px; font-weight:500}
+  .num{font-family:var(--mono); text-align:right}
+  .cid{font-family:var(--mono); font-weight:700; color:var(--ink)}
+
+  .legend{display:flex; flex-wrap:wrap; gap:6px 16px; font-family:var(--mono); font-size:11.5px; color:var(--muted); margin:0 0 14px}
+  .legend i{display:inline-block; width:13px; height:13px; border-radius:3px; vertical-align:-2px; margin-right:6px; border:1px solid rgba(0,0,0,.08)}
+  .hm td.cell{font-family:var(--mono); text-align:center; font-weight:600; cursor:default; min-width:54px}
+  .hm td.cell .d{font-size:9.5px; opacity:.7; display:block; margin-top:1px; font-weight:500}
+  .hm thead th.grp{text-align:center; border-left:2px solid var(--line-strong)}
+  .hm thead th.sub{text-align:center; font-size:10px}
+  .hm td.gleft{border-left:2px solid var(--line-strong)}
+  .hm td.cap{font-family:var(--body); font-weight:500; white-space:nowrap}
+  .c-good{background:var(--good-bg); color:var(--good)}
+  .c-miss1{background:#fdecec; color:var(--miss)}
+  .c-miss2{background:#fbd4d4; color:#7f1212}
+  .c-miss3{background:#f3a8a8; color:#5c0a0a}
+  .c-na{background:#efeae0; color:#a59c8c}
+  .c-ok{background:var(--good-bg); color:var(--good)}
+  .c-part{background:#fdf0d8; color:var(--over)}
+  .c-bad{background:#f3a8a8; color:#5c0a0a}
+  .ktag{font-family:var(--mono); font-size:10px; padding:1px 6px; border-radius:20px; border:1px solid var(--line-strong); color:var(--muted)}
+  .ktag.struct{color:var(--accent); border-color:var(--accent-soft); background:var(--accent-soft)}
+  .ktag.blind{color:var(--over); border-color:var(--over-line); background:var(--over-bg)}
+
+  .bars{display:flex; flex-direction:column; gap:11px; margin-top:6px}
+  .bar-row{display:grid; grid-template-columns:160px 1fr; gap:14px; align-items:center}
+  .bar-row .lbl{font-family:var(--mono); font-size:12.5px; font-weight:500; text-align:right}
+  .bar-row .lbl .tag{display:block; font-size:10px; color:var(--muted); font-weight:400}
+  .track{position:relative; height:28px; background:#efe8db; border-radius:8px; overflow:hidden}
+  .fill{position:absolute; left:0; top:0; bottom:0; border-radius:8px; display:flex; align-items:center;
+    justify-content:flex-end; padding:0 10px; font-family:var(--mono); font-size:12px; color:#fff; font-weight:500;
+    min-width:46px; transition:width .9s cubic-bezier(.2,.8,.2,1)}
+  .fill.win{background:linear-gradient(90deg,#16a34a,#15803d)}
+  .fill.mid{background:linear-gradient(90deg,#d99220,#b45309)}
+  .fill.bad{background:linear-gradient(90deg,#dc4747,#b91c1c)}
+
+  .cols{display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:8px}
+  .col{border:1px solid var(--line); border-radius:14px; padding:20px 22px; background:var(--card)}
+  .col.yes{border-color:var(--good-line); background:linear-gradient(180deg,#f1faf3,#fbf9f4)}
+  .col.no{border-color:var(--over-line); background:linear-gradient(180deg,#fdf6ea,#fbf9f4)}
+  .col h4{font-family:var(--disp); font-size:16px; margin:0 0 12px; display:flex; align-items:center; gap:8px}
+  .col.yes h4{color:var(--good)} .col.no h4{color:var(--over)}
+  .col ul{margin:0; padding-left:18px} .col li{margin:0 0 8px; font-size:14px}
+  .col code{font-family:var(--mono); font-size:12.5px; background:#00000008; padding:1px 5px; border-radius:5px}
+
+  pre{font-family:var(--mono); font-size:12.5px; line-height:1.6; background:#1c2522; color:#dbe9e5;
+    border-radius:12px; padding:18px 20px; overflow-x:auto; margin:14px 0}
+  pre .cm{color:#7fae9f} pre .hi{color:#ffd479}
+  code{font-family:var(--mono)}
+  .grid2{display:grid; grid-template-columns:1fr 1fr; gap:18px}
+  .note{font-size:13px; color:var(--muted)}
+
+  .vswitch{display:inline-flex; gap:2px; margin-top:18px; background:var(--card); border:1px solid var(--line); border-radius:11px; padding:3px}
+  .vswitch a{font-family:var(--mono); font-size:12.5px; text-decoration:none; color:var(--muted); padding:6px 14px; border-radius:8px}
+  .vswitch a.cur{background:var(--accent); color:#fff; font-weight:600}
+
+  footer{padding:46px 0 70px; color:var(--muted); font-size:13px}
+  footer .anon{background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px 20px; margin:0 0 22px; font-size:13px}
+  footer code{background:#00000008; padding:1px 5px; border-radius:5px; font-size:12px}
+
+  @media(max-width:760px){
+    .stats{grid-template-columns:repeat(2,1fr)}
+    .cols,.grid2{grid-template-columns:1fr}
+    .bar-row{grid-template-columns:120px 1fr}
+    h1{font-size:34px}
+  }
+</style>
+</head>
+<body>
+
+<nav class="sidenav" id="sidenav" aria-label="章節導覽">
+  <div class="sidenav-h">V3 目錄</div>
+  <a href="#tldr"><span class="dot"></span><span class="lbl">摘要</span></a>
+  <a href="#design"><span class="dot"></span><span class="lbl">01 V1→V2→V3</span></a>
+  <a href="#main"><span class="dot"></span><span class="lbl">02 全 15 題主表</span></a>
+  <a href="#helps"><span class="dot"></span><span class="lbl">03 rubydex 幫多少</span></a>
+  <a href="#routing"><span class="dot"></span><span class="lbl">04 選擇器路由</span></a>
+  <a href="#efficiency"><span class="dot"></span><span class="lbl">05 讀檔/token</span></a>
+  <a href="#corrections"><span class="dot"></span><span class="lbl">06 勘誤/方法</span></a>
+  <a href="#verdict"><span class="dot"></span><span class="lbl">07 結論</span></a>
+</nav>
+
+<header class="hero">
+  <div class="wrap">
+    <span class="kicker">Code-Search Benchmark · V3 · selector × 全 15 題 · 2026</span>
+    <h1>把 rubydex 當<em>選擇器</em>:<br>讓模型自己決定何時用它,有比較好嗎?</h1>
+    <p class="lede">三代問法在變:<b>V1</b> 強迫模型用某個工具、<b>V2</b> 把 rubydex 丟進工具箱讓它自選、<b>V3</b> = 一個<b>會自己選工具的策略</b>(先廣 grep,結構題才叫 rubydex 驗證,字串/動態盲區走 grep)。這次把 V3 selector 跑滿全 15 題 × 3 模型,跟 V2 的 <b>grep-only</b> 與 <b>rubydex-available</b> 放在<b>同一把尺</b>下重判(per-case 單一 judge)。問題很簡單:讓模型自己當選擇器,到底比「純 grep」或「光放工具箱」好不好?</p>
+    <div class="vswitch">
+      <a href="./index.html">V1 報告</a>
+      <a href="./v2.html">V2 報告</a>
+      <a class="cur" href="./v3.html">V3 報告</a>
+    </div>
+    <div class="meta">
+      <span><b>15</b> cases(6 機器計分 + 9 判讀)</span>
+      <span><b>3</b> models(Haiku 4.5 · Opus 4.7-low · GPT-5.5)</span>
+      <span><b>3</b> 條件(grep / rubydex / selector)</span>
+      <span><b>n=1</b>,看方向不看小數點</span>
+    </div>
+    <div class="stats">
+      <div class="stat accent"><div class="n">grep&lt;rdx&lt;sel</div><div class="l">9 個 value 題的判讀品質,三個模型<b>全部</b>都是「純 grep &lt; 有 rubydex &lt; selector」單調上升</div></div>
+      <div class="stat"><div class="n">+1.5 / +1.0</div><div class="l">value 品質增幅:最弱的 Haiku 從 rubydex 拿到最多(+1.5/9),最強的 Codex 最少(+1.0)</div></div>
+      <div class="stat bad"><div class="n">4–7 / 15</div><div class="l">selector 真的呼叫 rubydex 的題數很少、且常落在「沒幫助」的盲區題 → prompt 層路由不可靠</div></div>
+      <div class="stat"><div class="n">case-12</div><div class="l">查證 live code 發現 answer key 寫錯(ledger 型別 1→4),已修;模型其實答對</div></div>
+    </div>
+  </div>
+</header>
+
+<section id="tldr">
+  <div class="wrap">
+    <div class="tldr">
+      <span class="lab">一句話結論</span>
+      <p><strong>給模型 rubydex —— 不管是「隨時可用」(V2)還是「叫它自己路由」(V3 selector)—— 在三個模型上都比純 grep 好;但「叫模型自己當選擇器」這條 prompt 捷徑只多加一點點,真正的槓桿在外層 orchestrator。</strong></p>
+      <p>在同一把尺下重判全 15 題後,故事很乾淨:<strong>value 題品質 grep → rubydex → selector 對三個模型全部單調上升</strong>(Haiku 5.5→6.5→7.0、Opus 6.5→7.5→8.0、Codex 7.5→8.0→8.5 / 滿分 9)。rubydex 加分最集中在 <strong>namespace / constant 計數題</strong>(case-4、4A、8)—— 純 grep 會多算或漏短形式,rubydex 把數字釘準;這跟機器題的結構題發現完全一致。</p>
+      <p>但 selector 比「rubydex 隨時可用」只多贏一點點,而且 <strong>selector 實際呼叫 rubydex 又稀疏又沒對準題型</strong>:Haiku 在好幾個結構主場題(case-1/2)選了純 grep、rubydex 0 次,卻在字串盲區題叫了它。→ <strong>「把 MCP 丟工具箱賭模型自己挑」不可靠,要靠外層 orchestrator 主動按題型路由(= V4)。</strong></p>
+      <p>兩個 caveat:① <strong>case-7</strong>(polymorphic source_type silent bug)<strong>三個模型 9 格全摃龜</strong> —— 都把 <code>'income_expense'</code> 當「對到真 model」,沒看穿 Rails 會 constantize 成不存在的頂層常數;這是推理盲點,rubydex 救不了。② 全程 <strong>n=1</strong>,小差異別當真。</p>
+    </div>
+  </div>
+</section>
+
+<section id="design">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">01</span><h2>V1 → V2 → V3:對 rubydex 的三種用法</h2></div>
+    <p class="sub">三代測的其實是「該怎麼把一個程式碼索引接進 LLM」的三種姿勢。任務、題庫不變,只變「rubydex 怎麼用」。</p>
+    <div class="tbl-wrap" style="margin:18px 0">
+      <table>
+        <thead><tr><th>版本</th><th>對 rubydex 的姿勢</th><th>對照組</th><th>可比性</th></tr></thead>
+        <tbody>
+          <tr><td class="cid">V1</td><td class="tech">強迫:「請用 rubydex」 vs 「請用 grep」(prompt 點名工具)</td><td class="num">with / without</td><td class="tech">不同 prompt 格式 + 自己一套 answer key + 無 case-14 → 只能當前身參考,不上同一把尺</td></tr>
+          <tr><td class="cid">V2</td><td class="tech">放工具箱:prompt 模糊、工具全開,<b>載不載 MCP</b> 由環境決定,模型自選用不用</td><td class="num">grep-only / rubydex-available</td><td class="tech">乾淨可比(V2 已修 MCP 污染)</td></tr>
+          <tr><td class="cid">V3</td><td class="tech"><b>選擇器</b>:rubydex 在工具箱 + 策略明寫「先廣 grep、結構引用才用 rubydex 驗證/排序、字串/YAML/動態盲區一律以 grep 為準、只讀少數候選」 → 模型自己按題型路由</td><td class="num">selector(單一 arm)</td><td class="tech">本報告主角</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout acc"><span class="lab">本報告的 3 條件</span><p>主表把 <b>V2-grep</b>(純 LLM 基線)、<b>V2-rubydex</b>(光放工具箱)、<b>V3-selector</b>(叫它路由)三條件擺一起。前兩個是「V2 的兩臂」,第三個是 V3。<b>每題用同一個 judge 判該題全 9 格</b>(3 模型 × 3 條件)→ 同題內跨模型、跨條件都能比。V1 因格式與 key 不同,只在文末當參考,不混進主表。</p></div>
+  </div>
+</section>
+
+<section id="main">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">02</span><h2>全 15 題主表</h2></div>
+    <p class="sub">上 6 題=可機器計分(數字=<b>file-recall</b>);下 9 題=judge 判讀(<b>ok / part / bad</b>)。每個模型三欄:grep → rubydex → selector。<span class="ktag struct">結構</span>=rubydex 主場、<span class="ktag blind">盲區</span>=答案不在靜態結構。</p>
+    <div class="legend">
+      <span><i class="c-good"></i>recall ≥.999 / ok</span>
+      <span><i class="c-part"></i>0.8–.99 / part</span>
+      <span><i class="c-miss2"></i>0.6–.79</span>
+      <span><i class="c-bad"></i>&lt;.6 / bad</span>
+      <span style="margin-left:auto">小字 = rubydex 呼叫次數</span>
+    </div>
+    <div class="tbl-wrap">
+      <table class="hm" id="mainTable">
+        <thead>
+          <tr><th rowspan="2">case</th><th rowspan="2">型</th>
+            <th class="grp" colspan="3">Haiku 4.5</th>
+            <th class="grp" colspan="3">Opus 4.7-low</th>
+            <th class="grp" colspan="3">GPT-5.5</th></tr>
+          <tr>
+            <th class="sub grp">grep</th><th class="sub">rdx</th><th class="sub">sel</th>
+            <th class="sub grp">grep</th><th class="sub">rdx</th><th class="sub">sel</th>
+            <th class="sub grp">grep</th><th class="sub">rdx</th><th class="sub">sel</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p class="note" style="margin-top:14px">讀法:看每組 3 欄由左到右(grep→rubydex→selector)綠化的趨勢。<b>機器結構題(case-1/2/14)與 value 計數題(case-4/4A/8)</b>是 rubydex 把紅/黃救綠的地方;<b>盲區題</b>三欄大多同色(rubydex 沒幫助)。唯一全紅是 <b>case-7</b>(下詳)。</p>
+  </div>
+</section>
+
+<section id="helps">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">03</span><h2>rubydex 到底幫多少?越弱的模型幫越多</h2></div>
+    <p class="sub">9 個 value 題的判讀品質分數(ok=1 / part=.5 / bad=0,滿分 9),三條件並排。三個模型<b>都</b>是 grep &lt; rubydex &lt; selector,但增幅隨模型變強而縮小。</p>
+    <div class="bars" id="valueBars" style="margin:18px 0 6px"></div>
+    <p class="note">6 機器題的平均 file-recall 也同向但更接近天花板:Haiku .82→.93→.94、Opus .91→.93→.89、Codex .94→.97→.93。<b>注意</b>:機器題上「rubydex 隨時可用」(中欄)其實常是最高的 —— selector 的路由在強模型上偶爾反而少叫 rubydex、小輸一截(Opus case-13、Codex case-1)。</p>
+    <div class="cols" style="margin-top:24px">
+      <div class="col yes">
+        <h4>✓ rubydex 一致加分的題型</h4>
+        <ul>
+          <li><b>namespace / constant 計數</b>(case-4、4A、8):純 grep 會漏短形式或多算,<code>find_constant_references</code> 把數字釘準 —— 三模型皆然。</li>
+          <li><b>rename / 關聯影響面</b>(機器 case-14、2):rubydex 直接給引用集,recall 不掉還少讀檔。</li>
+        </ul>
+      </div>
+      <div class="col no">
+        <h4>✗ 誰都救不了的題型</h4>
+        <ul>
+          <li><b>字串 / 動態推理</b>(case-7、10、3):答案不在靜態結構,rubydex 純 overhead。</li>
+          <li><b>case-7 全摃龜</b>:9 格都漏 <code>income_expense</code> silent bug。Opus 最慘(三條件全 bad)—— 自信地把 4 個 bug 全「解釋成正常」。</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="routing">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">04</span><h2>關鍵問題:selector 真的「會選」嗎?</h2></div>
+    <p class="sub">selector 的賣點是「按題型自己路由 rubydex」。實際看它每題叫了幾次 rubydex(V3-selector arm)—— 如果路由有效,應該<b>結構題多叫、盲區題不叫</b>。結果不是。</p>
+    <div class="tbl-wrap">
+      <table class="hm" id="routeTable">
+        <thead><tr><th>case</th><th>型</th><th class="sub">Haiku rdx</th><th class="sub">Opus rdx</th><th class="sub">Codex rdx</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div class="callout warn" style="margin-top:18px"><span class="lab">路由沒對準</span><p>看 <span class="ktag struct">結構</span> 列本該多叫 rubydex,但 <b>Haiku 在 case-1/2/14 多次 0 次</b>(挑了純 grep);反而 <span class="ktag blind">盲區</span> 的 case-7 字串題 <b>Opus 叫了 14 次、Codex 18 次</b>(rubydex 對字串根本沒用)。Haiku 全 15 題只 4 題真的用 rubydex、Opus 7 題且多是 1 次。→ <b>prompt 層的「選擇器」是模型隨興挑,不是按題型路由</b>。這正是為什麼 selector 只比「rubydex 隨時可用」多贏一點點。</p></div>
+    <p>真正能兌現 rubydex 價值的,是把路由從「拜託模型自己挑」搬到 <b>外層 orchestrator</b>:先判 intent → 結構題才召喚 rubydex → 多路召回打分 → 只把 top-k 餵進 LLM。本輪用 prompt 近似驗證了「rubydex 對結構題有料」,但也證明 <b>prompt-selector 這條捷徑不可靠</b> —— 那是 V4(orchestrator + ruby-lsp-rails / rails runtime)的事。</p>
+  </div>
+</section>
+
+<section id="efficiency">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">05</span><h2>讀檔 / token:結構題上 rubydex 能大砍 context</h2></div>
+    <p class="sub">6 機器題的 context token(in+cache+out,K)。rubydex 在結構題讓模型免翻檔 → context 大降;盲區題則是白付 MCP 載入稅。旗艦是 <b>case-14 rename 影響面</b>。</p>
+    <div class="bars" id="ctxBars" style="margin:18px 0 6px"></div>
+    <p class="note">case-14(Haiku):grep 讀 17 檔 / <b>659K</b> → selector 讀 <b>2 檔</b> / <b>223K</b>(−66%),recall 都 1.0。<code>find_constant_references</code> 一次給影響集、不用翻檔。但盲區題相反:case-13(Haiku)grep 428K → selector 1231K(載 MCP + 多讀);case-6 grep 96K → selector 340K。→ 又是 intent 路由:只結構題開 rubydex 才划算。</p>
+  </div>
+</section>
+
+<section id="corrections">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">06</span><h2>勘誤與方法</h2></div>
+    <p class="sub">這輪查證時抓到的問題,寫出來才誠實。</p>
+    <h3>① answer key 修正:case-12 ledger 型別 1 → 4</h3>
+    <p>舊 key 寫 <code>ledger_inferred_types=1</code>。但讀 <code>ledger_factory.rb</code> 的 live code:<code>LedgerFactory#steps</code> 回的是 <code>Success(user_ledger)</code> = <code>build_ledger_by_user(...)</code> 的結果,依「是否換約 × 是否含稅」回 <b>4 種型別</b>(2 UserLedger + 2 Decorator);key 寫的那個 <code>Ledger</code> 只是傳進去的<b>內層參數</b>,從不直接回傳。<b>→ 正解是 4,答 4 的模型是對的</b>;key 已修。</p>
+    <h3>② case-7 確認 key 沒錯:income_expense 真的是 silent bug</h3>
+    <p>有人(模型)說 <code>income_expense</code> 對到 <code>…FixedCharge::Models::IncomeExpense</code> 所以不是 bug。但它存進 Rails polymorphic 關聯,讀 <code>.source</code> 時 Rails 會 constantize <b>頂層</b> <code>IncomeExpense</code>(不存在)→ 仍是 silent bug。namespaced 那個 model 構不到。<b>→ key 正確,是模型判錯</b>。</p>
+    <div class="callout"><span class="lab">方法:為什麼要「per-case 重判」</span><p>第一輪我為了平行,每個模型派一個 judge,結果不同 judge 對同一份 key 套出不同嚴格度(case-10:某 judge 全 bad、另一個全 ok)→ 跨模型分數被污染。改成<b>每題一個 judge 判該題全 9 格</b>後,同題內跨模型/跨條件才真的可比。本報告主表用的是重判後的乾淨資料。</p></div>
+  </div>
+</section>
+
+<section id="verdict">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">07</span><h2>結論</h2></div>
+    <p>① <b>給模型 rubydex 是淨正面</b>:value 題品質三模型全部 grep &lt; rubydex &lt; selector,從沒讓誰變差;加分集中在 namespace/constant/rename 這類<b>結構題</b>,跟機器題發現一致。</p>
+    <p>② <b>越弱的模型幫越多</b>(Haiku +1.5、Codex +1.0):強模型純 grep 已接近天花板,rubydex 的邊際價值遞減。</p>
+    <p>③ <b>「selector」這條 prompt 捷徑只多贏一點點,而且路由不可靠</b>:模型實際叫 rubydex 又稀疏又沒對準題型(結構題不叫、盲區題猛叫)。selector ≈ rubydex-available。</p>
+    <p>④ <b>有些題誰都救不了</b>:case-7 的 polymorphic silent bug 是推理盲點,任何工具都沒幫上;Opus 還因為太會「講道理」而最慘。</p>
+    <p>⑤ <b>所以 V4 方向明確</b>:價值在 rubydex 對結構題的料,但要靠<b>外層 orchestrator 主動按 intent 路由</b>來兌現,不是把 MCP 丟工具箱賭模型自己挑。下一步:接 ruby-lsp-rails / rails runtime + 多路召回打分。</p>
+    <div class="callout"><span class="lab">如何看這些數字</span><p>每格只跑<b>一次(n=1)</b>,單次變異很大。所有結論都是<b>方向性訊號</b>;單題的小差異(尤其 ±1 個 part/ok)別當定論。要可發布的強主張需每格 N 次取中位。</p></div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="anon">
+      <b>方法 & 可重現</b><br>
+      6 機器題有 ground-truth 檔清單(<code>automation/answer_keys_machine/*.files</code>),recall=file-level(對版面免疫)。9 value 題對 <code>results/answer_key/case-*.md</code> 由 per-case 單一 judge 判 ok/part/bad(recall-first:漏報重罰、過報輕罰)。selector = 載 rubydex + 「先廣 grep、結構才驗證」策略的單一 arm(<code>run_all_selector.sh</code>);V2 兩臂沿用乾淨重跑數據。彙整 <code>v3_compare_aggregate.py</code>、判讀存 <code>v3_value_cojudge_final.md</code>。
+    </div>
+    <p>目標為三個生產 Rails 專案(已匿名)。題名與符號為中性化代稱。Rubydex Benchmark V3 · 2026-05-24 · n=1,看方向不看小數點。</p>
+  </div>
+</footer>
+
+<script>
+const D = {"machine":[{"id":"1","label":"has_one + delegate 鏈","kind":"struct","models":{"haiku":{"V2grep":{"recall":0.571,"reads":1,"rdx":0,"ctx":120},"V2rdx":{"recall":0.786,"reads":1,"rdx":1,"ctx":202},"V3sel":{"recall":0.643,"reads":1,"rdx":0,"ctx":611}},"opus-low":{"V2grep":{"recall":0.643,"reads":3,"rdx":0,"ctx":142},"V2rdx":{"recall":0.643,"reads":9,"rdx":1,"ctx":433},"V3sel":{"recall":0.643,"reads":7,"rdx":0,"ctx":288}},"codex-gpt-5.5":{"V2grep":{"recall":0.643,"reads":17,"rdx":0,"ctx":118},"V2rdx":{"recall":1.0,"reads":22,"rdx":3,"ctx":92},"V3sel":{"recall":0.643,"reads":36,"rdx":4,"ctx":89}}}},{"id":"2","label":"AASM 動態 event","kind":"struct","models":{"haiku":{"V2grep":{"recall":0.833,"reads":0,"rdx":0,"ctx":69},"V2rdx":{"recall":0.917,"reads":5,"rdx":4,"ctx":487},"V3sel":{"recall":1.0,"reads":7,"rdx":0,"ctx":826}},"opus-low":{"V2grep":{"recall":0.833,"reads":0,"rdx":0,"ctx":209},"V2rdx":{"recall":0.917,"reads":6,"rdx":3,"ctx":513},"V3sel":{"recall":0.917,"reads":6,"rdx":0,"ctx":414}},"codex-gpt-5.5":{"V2grep":{"recall":1.0,"reads":21,"rdx":0,"ctx":95},"V2rdx":{"recall":0.833,"reads":13,"rdx":0,"ctx":152},"V3sel":{"recall":0.917,"reads":13,"rdx":6,"ctx":71}}}},{"id":"5","label":"Sidekiq YAML 字串","kind":"blind","models":{"haiku":{"V2grep":{"recall":1.0,"reads":1,"rdx":0,"ctx":128},"V2rdx":{"recall":1.0,"reads":1,"rdx":3,"ctx":414},"V3sel":{"recall":1.0,"reads":3,"rdx":0,"ctx":385}},"opus-low":{"V2grep":{"recall":1.0,"reads":2,"rdx":0,"ctx":63},"V2rdx":{"recall":1.0,"reads":1,"rdx":2,"ctx":119},"V3sel":{"recall":1.0,"reads":2,"rdx":1,"ctx":81}},"codex-gpt-5.5":{"V2grep":{"recall":1.0,"reads":2,"rdx":0,"ctx":8},"V2rdx":{"recall":1.0,"reads":3,"rdx":2,"ctx":24},"V3sel":{"recall":1.0,"reads":2,"rdx":3,"ctx":33}}}},{"id":"6","label":"Object monkey-patch","kind":"blind","models":{"haiku":{"V2grep":{"recall":1.0,"reads":1,"rdx":0,"ctx":96},"V2rdx":{"recall":1.0,"reads":1,"rdx":2,"ctx":161},"V3sel":{"recall":1.0,"reads":2,"rdx":2,"ctx":340}},"opus-low":{"V2grep":{"recall":1.0,"reads":1,"rdx":0,"ctx":48},"V2rdx":{"recall":1.0,"reads":1,"rdx":1,"ctx":58},"V3sel":{"recall":1.0,"reads":1,"rdx":0,"ctx":76}},"codex-gpt-5.5":{"V2grep":{"recall":1.0,"reads":2,"rdx":0,"ctx":3},"V2rdx":{"recall":1.0,"reads":2,"rdx":3,"ctx":23},"V3sel":{"recall":1.0,"reads":2,"rdx":6,"ctx":21}}}},{"id":"13","label":"Hash dispatch 表","kind":"blind","models":{"haiku":{"V2grep":{"recall":0.5,"reads":4,"rdx":0,"ctx":720},"V2rdx":{"recall":1.0,"reads":7,"rdx":0,"ctx":1272},"V3sel":{"recall":1.0,"reads":8,"rdx":0,"ctx":1231}},"opus-low":{"V2grep":{"recall":1.0,"reads":1,"rdx":0,"ctx":71},"V2rdx":{"recall":1.0,"reads":2,"rdx":4,"ctx":289},"V3sel":{"recall":0.75,"reads":5,"rdx":1,"ctx":182}},"codex-gpt-5.5":{"V2grep":{"recall":1.0,"reads":14,"rdx":0,"ctx":108},"V2rdx":{"recall":1.0,"reads":13,"rdx":7,"ctx":73},"V3sel":{"recall":1.0,"reads":12,"rdx":4,"ctx":104}}}},{"id":"14","label":"rename 影響面","kind":"struct","models":{"haiku":{"V2grep":{"recall":1.0,"reads":17,"rdx":0,"ctx":659},"V2rdx":{"recall":0.882,"reads":0,"rdx":2,"ctx":80},"V3sel":{"recall":1.0,"reads":2,"rdx":2,"ctx":223}},"opus-low":{"V2grep":{"recall":1.0,"reads":1,"rdx":0,"ctx":81},"V2rdx":{"recall":1.0,"reads":0,"rdx":2,"ctx":86},"V3sel":{"recall":1.0,"reads":1,"rdx":1,"ctx":96}},"codex-gpt-5.5":{"V2grep":{"recall":1.0,"reads":3,"rdx":0,"ctx":83},"V2rdx":{"recall":1.0,"reads":0,"rdx":2,"ctx":44},"V3sel":{"recall":1.0,"reads":4,"rdx":4,"ctx":60}}}}],"value":[{"id":"3","label":"class_eval 動態生方法","kind":"blind","models":{"haiku":{"V2grep":{"judge":"part","reads":1,"rdx":0,"ctx":99},"V2rdx":{"judge":"part","reads":1,"rdx":2,"ctx":158},"V3sel":{"judge":"part","reads":1,"rdx":2,"ctx":230}},"opus-low":{"V2grep":{"judge":"part","reads":1,"rdx":0,"ctx":46},"V2rdx":{"judge":"part","reads":1,"rdx":2,"ctx":79},"V3sel":{"judge":"ok","reads":2,"rdx":0,"ctx":78}},"codex-gpt-5.5":{"V2grep":{"judge":"ok","reads":3,"rdx":0,"ctx":30},"V2rdx":{"judge":"ok","reads":2,"rdx":1,"ctx":25},"V3sel":{"judge":"ok","reads":2,"rdx":5,"ctx":49}}}},{"id":"4","label":"namespace 給 FQN","kind":"struct","models":{"haiku":{"V2grep":{"judge":"part","reads":3,"rdx":0,"ctx":252},"V2rdx":{"judge":"ok","reads":3,"rdx":1,"ctx":594},"V3sel":{"judge":"ok","reads":3,"rdx":0,"ctx":369}},"opus-low":{"V2grep":{"judge":"part","reads":1,"rdx":0,"ctx":94},"V2rdx":{"judge":"ok","reads":0,"rdx":1,"ctx":235},"V3sel":{"judge":"ok","reads":2,"rdx":1,"ctx":211}},"codex-gpt-5.5":{"V2grep":{"judge":"ok","reads":1,"rdx":0,"ctx":42},"V2rdx":{"judge":"ok","reads":1,"rdx":0,"ctx":42},"V3sel":{"judge":"ok","reads":3,"rdx":1,"ctx":64}}}},{"id":"4A","label":"namespace 不給 FQN","kind":"struct","models":{"haiku":{"V2grep":{"judge":"part","reads":4,"rdx":0,"ctx":947},"V2rdx":{"judge":"ok","reads":0,"rdx":10,"ctx":137},"V3sel":{"judge":"ok","reads":1,"rdx":5,"ctx":441}},"opus-low":{"V2grep":{"judge":"part","reads":0,"rdx":0,"ctx":66},"V2rdx":{"judge":"ok","reads":0,"rdx":5,"ctx":133},"V3sel":{"judge":"ok","reads":1,"rdx":4,"ctx":183}},"codex-gpt-5.5":{"V2grep":{"judge":"part","reads":1,"rdx":0,"ctx":95},"V2rdx":{"judge":"ok","reads":0,"rdx":9,"ctx":31},"V3sel":{"judge":"ok","reads":0,"rdx":9,"ctx":67}}}},{"id":"7","label":"source_type 字串/silent bug","kind":"blind","models":{"haiku":{"V2grep":{"judge":"bad","reads":6,"rdx":0,"ctx":1484},"V2rdx":{"judge":"part","reads":3,"rdx":1,"ctx":1002},"V3sel":{"judge":"part","reads":4,"rdx":0,"ctx":718}},"opus-low":{"V2grep":{"judge":"bad","reads":2,"rdx":0,"ctx":244},"V2rdx":{"judge":"bad","reads":2,"rdx":3,"ctx":252},"V3sel":{"judge":"bad","reads":3,"rdx":14,"ctx":446}},"codex-gpt-5.5":{"V2grep":{"judge":"bad","reads":28,"rdx":0,"ctx":109},"V2rdx":{"judge":"bad","reads":29,"rdx":4,"ctx":109},"V3sel":{"judge":"part","reads":23,"rdx":18,"ctx":226}}}},{"id":"8","label":"短形式↔FQN 計數","kind":"struct","models":{"haiku":{"V2grep":{"judge":"ok","reads":0,"rdx":0,"ctx":72},"V2rdx":{"judge":"ok","reads":14,"rdx":2,"ctx":392},"V3sel":{"judge":"ok","reads":0,"rdx":0,"ctx":130}},"opus-low":{"V2grep":{"judge":"ok","reads":0,"rdx":0,"ctx":56},"V2rdx":{"judge":"ok","reads":0,"rdx":2,"ctx":85},"V3sel":{"judge":"ok","reads":0,"rdx":1,"ctx":65}},"codex-gpt-5.5":{"V2grep":{"judge":"ok","reads":0,"rdx":0,"ctx":7},"V2rdx":{"judge":"ok","reads":16,"rdx":2,"ctx":20},"V3sel":{"judge":"ok","reads":16,"rdx":1,"ctx":25}}}},{"id":"9","label":"callback symbol","kind":"blind","models":{"haiku":{"V2grep":{"judge":"ok","reads":1,"rdx":0,"ctx":264},"V2rdx":{"judge":"part","reads":1,"rdx":6,"ctx":494},"V3sel":{"judge":"ok","reads":2,"rdx":0,"ctx":448}},"opus-low":{"V2grep":{"judge":"ok","reads":1,"rdx":0,"ctx":96},"V2rdx":{"judge":"ok","reads":1,"rdx":1,"ctx":139},"V3sel":{"judge":"ok","reads":1,"rdx":0,"ctx":105}},"codex-gpt-5.5":{"V2grep":{"judge":"ok","reads":4,"rdx":0,"ctx":38},"V2rdx":{"judge":"ok","reads":4,"rdx":2,"ctx":99},"V3sel":{"judge":"ok","reads":3,"rdx":3,"ctx":29}}}},{"id":"10","label":"i18n 動態 key","kind":"blind","models":{"haiku":{"V2grep":{"judge":"part","reads":6,"rdx":0,"ctx":1180},"V2rdx":{"judge":"part","reads":7,"rdx":0,"ctx":1677},"V3sel":{"judge":"part","reads":8,"rdx":0,"ctx":857}},"opus-low":{"V2grep":{"judge":"ok","reads":0,"rdx":0,"ctx":39},"V2rdx":{"judge":"ok","reads":5,"rdx":0,"ctx":398},"V3sel":{"judge":"ok","reads":4,"rdx":0,"ctx":321}},"codex-gpt-5.5":{"V2grep":{"judge":"ok","reads":10,"rdx":0,"ctx":94},"V2rdx":{"judge":"ok","reads":19,"rdx":0,"ctx":83},"V3sel":{"judge":"ok","reads":17,"rdx":7,"ctx":174}}}},{"id":"11","label":"routes helper 反查","kind":"struct","models":{"haiku":{"V2grep":{"judge":"part","reads":3,"rdx":0,"ctx":639},"V2rdx":{"judge":"part","reads":5,"rdx":0,"ctx":595},"V3sel":{"judge":"ok","reads":3,"rdx":0,"ctx":918}},"opus-low":{"V2grep":{"judge":"ok","reads":2,"rdx":0,"ctx":58},"V2rdx":{"judge":"ok","reads":2,"rdx":2,"ctx":245},"V3sel":{"judge":"ok","reads":2,"rdx":0,"ctx":148}},"codex-gpt-5.5":{"V2grep":{"judge":"ok","reads":7,"rdx":0,"ctx":73},"V2rdx":{"judge":"ok","reads":7,"rdx":4,"ctx":73},"V3sel":{"judge":"ok","reads":6,"rdx":3,"ctx":94}}}},{"id":"12","label":"method_missing 轉發","kind":"blind","models":{"haiku":{"V2grep":{"judge":"ok","reads":8,"rdx":0,"ctx":376},"V2rdx":{"judge":"ok","reads":4,"rdx":0,"ctx":380},"V3sel":{"judge":"part","reads":7,"rdx":0,"ctx":448}},"opus-low":{"V2grep":{"judge":"ok","reads":4,"rdx":0,"ctx":174},"V2rdx":{"judge":"ok","reads":5,"rdx":6,"ctx":303},"V3sel":{"judge":"ok","reads":5,"rdx":0,"ctx":243}},"codex-gpt-5.5":{"V2grep":{"judge":"ok","reads":16,"rdx":0,"ctx":93},"V2rdx":{"judge":"ok","reads":12,"rdx":3,"ctx":27},"V3sel":{"judge":"ok","reads":12,"rdx":8,"ctx":86}}}}]};
+const MODELS=[['haiku','Haiku'],['opus-low','Opus'],['codex-gpt-5.5','GPT-5.5']];
+const CONDS=['V2grep','V2rdx','V3sel'];
+
+function recallClass(v){ if(v==null) return 'c-na'; if(v>=0.999) return 'c-good'; if(v>=0.8) return 'c-part'; if(v>=0.6) return 'c-miss2'; return 'c-bad'; }
+function judgeClass(j){ return j==='ok'?'c-ok':j==='part'?'c-part':'c-bad'; }
+
+// ---- main 15-case heatmap ----
+(function(){
+  const tb=document.querySelector('#mainTable tbody');
+  function rowFor(r, isMachine){
+    let html=`<td class="cid">case-${r.id}</td><td><span class="ktag ${r.kind}">${r.kind==='struct'?'結構':'盲區'}</span></td>`;
+    MODELS.forEach(([mk],mi)=>{
+      CONDS.forEach((c,ci)=>{
+        const cell=r.models[mk][c];
+        const gl = ci===0 ? ' gleft':'';
+        const rdx = cell.rdx>0 ? `<span class="d">rdx ${cell.rdx}</span>` : '';
+        if(isMachine){
+          const v=cell.recall;
+          html+=`<td class="cell ${recallClass(v)}${gl}">${v==null?'–':v.toFixed(2)}${rdx}</td>`;
+        }else{
+          html+=`<td class="cell ${judgeClass(cell.judge)}${gl}">${cell.judge}${rdx}</td>`;
+        }
+      });
+    });
+    return html;
+  }
+  // section separators via caption rows
+  const sep=(txt)=>{ const tr=document.createElement('tr'); tr.innerHTML=`<td class="cap" colspan="11" style="background:#f1ece0;font-family:var(--mono);font-size:11px;letter-spacing:.08em;color:var(--muted)">${txt}</td>`; tb.appendChild(tr); };
+  sep('機器計分題(數字 = file-recall)');
+  D.machine.forEach(r=>{ const tr=document.createElement('tr'); tr.innerHTML=rowFor(r,true); tb.appendChild(tr); });
+  sep('判讀題(ok / part / bad)');
+  D.value.forEach(r=>{ const tr=document.createElement('tr'); tr.innerHTML=rowFor(r,false); tb.appendChild(tr); });
+})();
+
+// ---- value quality bars (per model, 3 conditions) ----
+(function(){
+  const wrap=document.getElementById('valueBars');
+  const sc={ok:1,part:0.5,bad:0};
+  const rows=[];
+  MODELS.forEach(([mk,mn])=>{
+    const s={V2grep:0,V2rdx:0,V3sel:0};
+    D.value.forEach(r=>CONDS.forEach(c=>s[c]+=sc[r.models[mk][c].judge]));
+    [['grep','V2grep','mid'],['+rubydex','V2rdx','mid'],['selector','V3sel','win']].forEach(([lbl,key,cls])=>{
+      rows.push({name:`${mn} · ${lbl}`, val:s[key], cls});
+    });
+  });
+  rows.forEach((r,i)=>{
+    const row=document.createElement('div'); row.className='bar-row';
+    row.innerHTML=`<div class="lbl">${r.name}</div><div><div class="track"><div class="fill ${r.cls}" style="width:0">${r.val.toFixed(1)} / 9</div></div></div>`;
+    wrap.appendChild(row);
+    setTimeout(()=>{ row.querySelector('.fill').style.width=(r.val/9*100)+'%'; }, 100+i*60);
+  });
+})();
+
+// ---- machine ctx bars (case-14 + aggregate) ----
+(function(){
+  const wrap=document.getElementById('ctxBars');
+  // aggregate ctx over 6 machine cases per condition, per model
+  const rows=[];
+  MODELS.forEach(([mk,mn])=>{
+    const s={V2grep:0,V2rdx:0,V3sel:0};
+    D.machine.forEach(r=>CONDS.forEach(c=>s[c]+=(r.models[mk][c].ctx||0)));
+    [['grep','V2grep'],['+rubydex','V2rdx'],['selector','V3sel']].forEach(([lbl,key])=>{
+      rows.push({name:`${mn} · ${lbl}`, val:s[key], base:s.V2grep});
+    });
+  });
+  const max=Math.max(...rows.map(r=>r.val));
+  rows.forEach((r,i)=>{
+    const cls = r.val<=r.base*0.97?'win':(r.val>r.base*1.05?'bad':'mid');
+    const row=document.createElement('div'); row.className='bar-row';
+    row.innerHTML=`<div class="lbl">${r.name}</div><div><div class="track"><div class="fill ${cls}" style="width:0">${(r.val/1000).toFixed(2)}M</div></div></div>`;
+    wrap.appendChild(row);
+    setTimeout(()=>{ row.querySelector('.fill').style.width=Math.max(8,r.val/max*100)+'%'; }, 100+i*60);
+  });
+})();
+
+// ---- selector routing table (rdx calls per case for V3-selector) ----
+(function(){
+  const tb=document.querySelector('#routeTable tbody');
+  const all=[...D.machine,...D.value];
+  // order: struct first then blind, machine then value within
+  all.forEach(r=>{
+    let html=`<td class="cid">case-${r.id}</td><td><span class="ktag ${r.kind}">${r.kind==='struct'?'結構':'盲區'}</span></td>`;
+    MODELS.forEach(([mk])=>{
+      const n=r.models[mk].V3sel.rdx||0;
+      const cls = r.kind==='struct' ? (n>0?'c-ok':'c-bad') : (n>0?'c-part':'c-good');
+      html+=`<td class="cell ${cls}">${n}</td>`;
+    });
+    const tr=document.createElement('tr'); tr.innerHTML=html; tb.appendChild(tr);
+  });
+})();
+
+// ---- side nav scroll-spy ----
+(function(){
+  const links={};
+  document.querySelectorAll('.sidenav a').forEach(a=>links[a.getAttribute('href').slice(1)]=a);
+  const obs=new IntersectionObserver(entries=>{
+    entries.forEach(e=>{ if(e.isIntersecting){
+      Object.values(links).forEach(a=>a.classList.remove('active'));
+      if(links[e.target.id]) links[e.target.id].classList.add('active');
+    }});
+  },{rootMargin:'-45% 0px -50% 0px', threshold:0});
+  Object.keys(links).forEach(id=>{ const el=document.getElementById(id); if(el) obs.observe(el); });
+})();
+</script>
+</body>
+</html>

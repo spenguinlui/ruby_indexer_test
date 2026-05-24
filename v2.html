@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Rubydex Benchmark V2 — 模糊 prompt × 自然工具選用 × refactor case</title>
-<meta name="description" content="V2:把 prompt 最大模糊化、開放全部工具、with/without 只差載不載 MCP,讓模型自然選用。15 cases × 3 models × 2 = 90 結果點。外加 refactor 影響面 case。Recall-first 評分。">
+<meta name="description" content="V2(乾淨重跑修訂版):原 V2 的 without 對照組其實偷載了 MCP,with/without 比較失效;用 --strict-mcp-config 修正後重跑三模型。修正後 rubydex 對 recall 的幫助比原測明顯,但仍混合、仍高變異(n=1)。15 cases × 3 models × 2 = 90 結果點。Recall-first 評分。">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
@@ -229,6 +229,8 @@
   table.vt td.c{text-align:center; font-family:var(--mono)}
   table.vt tr td:first-child{font-family:var(--mono); font-size:12.5px}
   .hl-hurt{background:var(--miss-bg)}
+  .hm td.cell.ring-help{box-shadow:inset 0 0 0 2.5px var(--good); border-radius:7px}
+  .hm td.cell.ring-hurt{box-shadow:inset 0 0 0 2.5px var(--miss); border-radius:7px}
 </style>
 </head>
 <body>
@@ -236,6 +238,7 @@
 <nav class="sidenav" id="sidenav" aria-label="章節導覽">
   <div class="sidenav-h">V2 目錄</div>
   <a href="#tldr"><span class="dot"></span><span class="lbl">摘要</span></a>
+  <a href="#correction"><span class="dot"></span><span class="lbl">⚠ 勘誤</span></a>
   <a href="#whatsnew"><span class="dot"></span><span class="lbl">01 v1→v2 差異</span></a>
   <a href="#recall"><span class="dot"></span><span class="lbl">02 Recall 主表</span></a>
   <a href="#cost"><span class="dot"></span><span class="lbl">03 成本/工具</span></a>
@@ -247,12 +250,13 @@
 
 <header class="hero">
   <div class="wrap">
-    <span class="kicker">Code-Search Benchmark · V2 · 2026</span>
+    <span class="kicker">Code-Search Benchmark · V2 · 乾淨重跑修訂版 · 2026</span>
     <h1>放開手讓模型<em>自己選工具</em><br>rubydex 帶來多少差別?</h1>
-    <p class="lede">V1 是「強迫用 rubydex vs 強迫用 grep」的對照。<b>V2 換成更貼近日常開發的設定</b>:prompt 寫得很模糊、開放全部工具(含 Glob)、with/without <b>只差載不載入 MCP</b> —— 由模型自己決定要不要呼叫 rubydex。另外補一個對標官方 benchmark 的 <b>refactor 影響面</b> case。這是 V1 的延伸觀察,不是要否定誰。</p>
+    <p class="lede">V1 是「強迫用 rubydex vs 強迫用 grep」的對照。<b>V2 換成更貼近日常開發的設定</b>:prompt 寫得很模糊、開放全部工具(含 Glob)、with/without <b>只差載不載入 MCP</b> —— 由模型自己決定要不要呼叫 rubydex。<b>這是修訂版</b>:我們發現原 V2 的「不載 MCP」對照組其實偷偷載到了 rubydex(<a href="#correction">詳見勘誤</a>),修正後重跑了三個模型。結論方向因此改變,以下都是乾淨數據。這是 V1 的延伸觀察,不是要否定誰。</p>
     <div class="vswitch">
       <a href="./index.html">V1 報告</a>
       <a class="cur" href="./v2.html">V2 報告</a>
+      <a href="./v3.html">V3 報告</a>
     </div>
     <div class="meta">
       <span><b>15</b> cases</span>
@@ -262,10 +266,10 @@
       <span>目標：<b>3 個生產 Rails 專案</b>（App-A / B / C）</span>
     </div>
     <div class="stats">
-      <div class="stat accent"><div class="n">90</div><div class="l">結果點（15 題 × 3 模型 × 2 條件）</div></div>
-      <div class="stat"><div class="n">1/18</div><div class="l">18 組對照中，rubydex 提升 recall 的次數（此題庫）</div></div>
-      <div class="stat"><div class="n">1.00→0.64</div><div class="l">case-1 Opus：載入 rubydex 後的 recall 變化</div></div>
-      <div class="stat"><div class="n">+53%</div><div class="l">Opus 端載入 MCP 的成本增幅</div></div>
+      <div class="stat accent"><div class="n">5/18</div><div class="l">乾淨重跑下，rubydex 提升 recall 的對照數（原污染版只看到 1/18）</div></div>
+      <div class="stat"><div class="n">0.64→1.00</div><div class="l">case-1 Codex：載入 rubydex 後補回漏掉的 spec</div></div>
+      <div class="stat"><div class="n">+48%</div><div class="l">Opus 端載入 MCP 的成本增幅（乾淨）</div></div>
+      <div class="stat"><div class="n">n=1</div><div class="l">每格僅一次採樣，變異大；數字看方向不看小數點</div></div>
     </div>
   </div>
 </header>
@@ -273,11 +277,44 @@
 <section id="tldr">
   <div class="wrap">
     <div class="tldr">
-      <span class="lab">一句話結論</span>
-      <p><strong>在自然選用下,把 rubydex 加進工具箱,對 recall 多半是中性、偶爾偏負;成本則有增有減,影響在較小的模型上比較明顯。</strong></p>
-      <p>6 個可機器計分的題、18 組 with/without 對照裡,rubydex <strong>幾乎沒有提升 recall</strong>(只有 1 個例外);偶爾還會略低 —— 比較明顯的是 <strong>Opus case-1:沒載 rubydex 拿滿分 1.00,載了之後 0.64</strong>。</p>
-      <p>另一個值得提的觀察:V1 看到的「Claude 卡在 rubydex 上」與「太信嚴格 AST 而答錯」<strong>在 V2 沒有再出現</strong> —— 自然選用下,模型會在 rubydex 派不上用場的題自己改走 grep。</p>
+      <span class="lab">一句話結論（修訂後）</span>
+      <p><strong>修正污染後,把 rubydex 加進工具箱對 recall 的幫助,比原測明顯不少 —— 但仍是混合結果、變異很大(每格只跑一次)。</strong></p>
+      <p>關鍵在勘誤:原 V2 的「不載 MCP」對照組,其實偷偷載到了 rubydex(Claude 從上層目錄自動發現 <code>.mcp.json</code>、codex 載到全域註冊),所以「真正不用 MCP」的基線被墊高了,讓 rubydex 看起來「沒幫助、甚至偏負」。<a href="#correction">修掉之後</a>,真正的 grep-only 基線其實更低,於是 rubydex 在好幾題贏過它。</p>
+      <p>6 個可機器計分的題、18 組 with/without 對照:<strong>rubydex 提升 recall 的有 5 組</strong>(原污染版只看到 1),拉低的有 2 組,其餘打平。最明顯的正例是 <strong>case-1:Codex 0.64→1.00、Haiku 0.57→0.79</strong>(純 grep 漏掉 spec,rubydex 補回)。成本上 Opus 端載 MCP 仍貴約 48%,Haiku 端則約略持平。</p>
     </div>
+  </div>
+</section>
+
+<section id="correction">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">⚠</span><h2>勘誤:原 V2 的「不載 MCP」其實偷載了 MCP</h2></div>
+    <p class="sub">先把這件事講清楚 —— 這也是這份報告結論方向改變的原因。我們把它寫出來,是希望別人少踩同一個坑。</p>
+
+    <div class="callout"><span class="lab">問題</span><p>原 V2 的 with/without 設計是「<b>cwd 不同、不另外載 MCP</b>」:without 變體把工作目錄切到 <code>~/ruby_indexer/control_room</code>(一個空目錄),以為這樣就不會載入 rubydex。<b>但兩個 CLI 都會自動往上找設定檔</b> —— Claude Code 從子目錄 auto-discover 上層的 <code>.mcp.json</code>、codex 則載入全域註冊的 <code>~/.codex/config.toml</code>。結果 without 變體照樣把 rubydex 載進去、也真的呼叫了它。</p></div>
+
+    <p>翻 transcript 才發現:<b>三個模型的 without 輪都實際用到了 rubydex</b>。例如某題的 without 輪呼叫了 rubydex 達 20 次。所以原報告寫的「without = 無 MCP / grep-only」「with/without 只差載不載 MCP」<b>並不成立</b> —— 它量到的其實是「MCP + cwd-A」對「MCP + cwd-B」,從來沒有乾淨的「有 MCP vs 無 MCP」。</p>
+
+    <h3>為什麼這會讓結論失真</h3>
+    <p class="sub">被污染的是<b>對照組(without)</b>。without 偷用了 rubydex,等於把「純 grep」的基線<b>墊高</b>了;於是 with(本來就有 rubydex)很難贏過它 —— rubydex 看起來「沒幫助、甚至偏負」,其實是在跟「另一個也有 rubydex 的自己」比。把 without 修乾淨、基線掉回真實高度後,with 在好幾題就明顯贏回來了。</p>
+
+    <div class="grid2" style="margin-top:14px">
+      <div class="col no" style="background:linear-gradient(180deg,#fdf6ea,#fbf9f4)">
+        <h4 style="color:var(--over)">修法</h4>
+        <ul style="margin:0;padding-left:18px">
+          <li><b>Claude</b>:加 <code>--strict-mcp-config</code> —— 只用 <code>--mcp-config</code> 明確指定的 server,忽略 auto-discovery 與全域設定。with = strict + 載 4 個 rubydex;without = strict + 不給任何 config(真零 MCP)。</li>
+          <li><b>codex</b>:without 改用 <code>--ignore-user-config</code>,不載 <code>~/.codex/config.toml</code>(舊版用 <code>-c 'mcp_servers={}'</code> 無效,全域 server 照載)。</li>
+        </ul>
+      </div>
+      <div class="col yes">
+        <h4>已驗證乾淨</h4>
+        <ul style="margin:0;padding-left:18px">
+          <li>修後重跑 codex without 輪:<b>15 題全部 0 次 rubydex 呼叫</b>(逐題核對 jsonl)。</li>
+          <li>Claude without 輪:strict 模式下連 rubydex 的 tool schema 都不進 context。</li>
+          <li>三個模型(Haiku / Opus-low / GPT-5.5)<b>全部用修好的 runner 重跑</b>,以下圖表全是乾淨數據。</li>
+        </ul>
+      </div>
+    </div>
+    <p class="note" style="margin-top:14px">這是這份修訂版唯一動到的東西:<b>對照組的環境隔離</b>。prompt、題庫、計分方式都沒變。原始的污染數據我們留著當「control_room 會自動載 MCP」的證據,沒有丟。</p>
   </div>
 </section>
 
@@ -294,7 +331,7 @@
       </div>
       <div>
         <h3>③ with/without 只差「載不載 MCP」</h3>
-        <p class="sub">兩版 prompt <b>文字完全相同</b>。差別純在環境:with 載入 rubydex MCP、without 不載。量到的是最有決策價值的問題 ——「<b>把 rubydex 放工具箱、不強迫用,到底有沒有讓結果變好</b>」。</p>
+        <p class="sub">兩版 prompt <b>文字完全相同</b>。差別純在環境:with 載入 rubydex MCP、without 不載。量到的是最有決策價值的問題 ——「<b>把 rubydex 放工具箱、不強迫用,到底有沒有讓結果變好</b>」。<br><b>(修訂)</b>原本靠「切 cwd 到空目錄」來不載 MCP,但 CLI 會自動往上找設定檔導致 without 偷載 rubydex;已改用 <code>--strict-mcp-config</code> / <code>--ignore-user-config</code> 做真正的隔離,<a href="#correction">見勘誤</a>。</p>
         <h3>④ 新增 refactor 影響面 case</h3>
         <p class="sub">對標官方唯一沒涵蓋的「真的改 code」維度。改問「rename 一個 class 的完整影響清單」,對 ground-truth 影響集算 recall(不跑測試、不依賴 DB)。</p>
       </div>
@@ -341,10 +378,11 @@ hits_total: &lt;n&gt;  hits_A: &lt;n&gt;  hits_B: &lt;n&gt;  hits_C: &lt;n&gt;  
         <tbody></tbody>
       </table>
     </div>
-    <p class="note" style="margin-top:14px">「+rubydex」= MCP 載入但模型自己決定用不用。粉紅底格 = with &lt; without(rubydex 在場反而漏更多)。</p>
-    <div class="callout" style="border-left-color:var(--over);background:var(--over-bg)">
-      <span class="lab" style="color:var(--over)">觀察:這個題庫裡,rubydex 對 recall 多半中性、偶爾偏負</span>
-      <p>18 組 with/without 對照中,rubydex <b>幾乎沒有提升 recall</b>(只有 1 個例外:codex case-1,0.57→0.64)。少數情況還會略低:Haiku case-1/2、Opus case-1;其餘多半打平(case-5/6/14 在強模型端)。也就是說,在這組「找全」任務上,把 rubydex 放進工具箱沒看到 recall 上的正貢獻 —— 這跟它的設計強項(結構性常數查詢)不在同一類題有關。</p>
+    <p class="note" style="margin-top:14px">「+rubydex」= MCP 載入但模型自己決定用不用;「grep」= <b>真正不載 MCP</b>(已修正污染)。每格底色深淺=recall 高低(越紅漏越多);<b>「+rubydex」欄加綠框 = 該模型 with &gt; without(rubydex 幫到 recall)、加紅框 = with &lt; without(反而漏更多)</b>。</p>
+    <div class="callout" style="border-left-color:var(--good);background:var(--good-bg)">
+      <span class="lab" style="color:var(--good)">觀察(修正污染後):rubydex 提升 recall 的次數比原測明顯,但仍混合</span>
+      <p>18 組 with/without 對照中,rubydex <b>提升 recall 的有 5 組</b>(原污染版只看到 1):case-1 的 Haiku(0.57→0.79)與 Codex(0.64→1.00)、case-2 的 Haiku(0.83→0.92)與 Opus(0.83→0.92)、case-13 的 Haiku(0.50→1.00)。<b>拉低的有 2 組</b>:case-2 Codex(1.00→0.83)、case-14 Haiku(1.00→0.88)。其餘 11 組打平(多在強模型端 + case-5/6 兩邊都滿分)。</p>
+      <p style="margin-top:8px">為什麼跟原測差這麼多?因為被墊高的對照組被拉回來了。最戲劇化的是 <b>case-1</b>:原污染版顯示「Opus 1.00→0.64,rubydex 害的」,乾淨重跑後 Opus 兩邊都是 0.64(打平),而真正的故事是 <b>純 grep 會漏掉 spec 檔</b>,rubydex 反而幫 Haiku、Codex 補回去。<a href="#case1">見深潛</a>。</p>
     </div>
   </div>
 </section>
@@ -355,32 +393,48 @@ hits_total: &lt;n&gt;  hits_A: &lt;n&gt;  hits_B: &lt;n&gt;  hits_C: &lt;n&gt;  
     <h3>把 rubydex 放工具箱要多付多少</h3>
     <p class="sub">整輪 15 題的總成本,with(載 MCP)對 without(不載):</p>
     <div class="bars" id="costBars"></div>
-    <p class="sub" style="margin-top:6px"><b>Opus 端整體貴約 53%</b>,在這些題沒看到對應的 recall 提升;比較明顯的單題是 Opus case-1(成本近一倍、recall 從 1.00 到 0.64)。不過成本是<b>有增有減</b>的 —— 有些題 with 反而便宜(rubydex 直接給答案、省掉 grep 探索)。整體看,recall 端比較一致地中性偏負,成本則因題而異。</p>
+    <p class="sub" style="margin-top:6px">(此為乾淨重跑,without = 真正不載 MCP。)<b>Opus 端載 MCP 仍貴約 48%</b> —— 不過這次有對應的 recall 好處(Opus case-2 0.83→0.92)。<b>Haiku 端則約略持平,with 甚至略便宜 ~7%</b>(載了 rubydex 後少做幾輪 grep 廣掃,抵掉了 MCP 的 context 成本)。整體看,成本主要是 Opus 才明顯,而且這版的成本付出更多換得到 recall。</p>
+    <p class="note">補充:原污染版寫的「Opus +53% / Haiku +6%」是「兩邊都載 MCP」下比出來的,without 那邊也付了 MCP 成本,所以差距被壓小。修乾淨後 without 便宜了,Opus 的相對增幅其實沒變多少(53%→48%),Haiku 則翻成「with 略便宜」。</p>
     <div class="callout" style="border-left-color:var(--good);background:var(--good-bg)">
       <span class="lab" style="color:var(--good)">一個正面發現:模型會自己判斷要不要用 rubydex</span>
-      <p>放開限制後,在 rubydex 看不到的題(source_type 字串、callback symbol、i18n yaml),Haiku 與 Opus 的「+rubydex」那輪<b>呼叫 rubydex 的次數是 0</b> —— 它們自己改走 grep / bash。這也補充了 V1 的觀察:V1 看到的「LLM 傾向過度呼叫 rubydex」,比較像是「強迫用」設定下的產物;自然選用時,模型多半只在 rubydex 的強項題(多 namespace)才會用它。</p>
+      <p>放開限制後,在 rubydex 看不到的題(source_type 字串、callback symbol、i18n yaml),模型的「+rubydex」那輪多半<b>沒去呼叫 rubydex</b> —— 自己改走 grep / bash。這也補充了 V1 的觀察:V1 看到的「LLM 傾向過度呼叫 rubydex」,比較像是「強迫用」設定下的產物;自然選用時,模型多半只在 rubydex 的強項題(多 namespace、常數解析)才會用它。</p>
     </div>
   </div>
 </section>
 
 <section id="case1">
   <div class="wrap">
-    <div class="sec-head"><span class="sec-num">04</span><h2>case-1 深潛:從「卡住」到「偏食」</h2></div>
-    <p class="sub">has_one + delegate 鏈式(找全會碰到某個被委派屬性的點)—— V1 最受關注的一題,V2 的表現更微妙、也更貼近真實使用。</p>
+    <div class="sec-head"><span class="sec-num">04</span><h2>case-1 深潛:污染如何把結論整個翻過去</h2></div>
+    <p class="sub">has_one + delegate 鏈式(找全會碰到某個被委派屬性的點)—— V1 最受關注的一題,也是這次污染修正後翻最大的一題。這題很適合用來看「對照組被污染」會怎麼誤導結論。</p>
+
+    <h3>污染版(原 published):看起來 rubydex 害了 Opus</h3>
     <div class="tbl-wrap">
       <table class="vt">
-        <thead><tr><th>條件</th><th class="c">recall</th><th>行為</th></tr></thead>
+        <thead><tr><th>條件(污染版)</th><th class="c">recall</th><th>當時的解讀</th></tr></thead>
         <tbody>
-          <tr class="hl-hurt"><td>V1 · 強迫 rubydex(Haiku/Opus)</td><td class="c"><span class="vbad">0 / 24</span></td><td>被要求只用 MCP、沒有 fallback grep → 卡在 rubydex 上、幾乎全漏</td></tr>
-          <tr><td>V2 · Opus · grep(不載 MCP)</td><td class="c"><span class="vok">1.00</span></td><td>純 grep,找全(含 spec 檔)</td></tr>
-          <tr class="hl-hurt"><td>V2 · Opus · +rubydex</td><td class="c"><span class="vpart">0.64</span></td><td>叫了 rubydex 2 次 + grep 3 次,<b>漏掉 5 個 spec 檔</b></td></tr>
+          <tr><td>Opus · grep(以為不載 MCP)</td><td class="c"><span class="vok">1.00</span></td><td>「純 grep 找全」—— 但其實這輪偷用了 rubydex + grep</td></tr>
+          <tr class="hl-hurt"><td>Opus · +rubydex</td><td class="c"><span class="vpart">0.64</span></td><td>「載了 rubydex 反而漏 5 個 spec」→ 誤判成 rubydex 有害</td></tr>
         </tbody>
       </table>
     </div>
-    <div class="callout" style="border-left-color:var(--accent);background:var(--accent-soft)">
-      <span class="lab" style="color:var(--accent)">怎麼解讀</span>
-      <p>自然選用<b>化解了 V1 那種「卡住全漏」</b>(0 → 0.64,模型會混用 grep 了);不過 rubydex 在場時,recall 還是<b>略低於純 grep 的基線</b> —— 它讓模型偏向語意結果、少做一點 grep 廣掃,於是漏掉 spec 那種要靠 grep 才掃得到的角落。對 recall-first(把漏報看得比較重)來說,這會略為扣分。</p>
+    <p class="sub" style="margin-top:8px">當時把它寫成「rubydex 害 Opus 從 1.00 掉到 0.64」。但那個 1.00 的基線是<b>偷用 rubydex 撐出來的</b> —— 對照組根本不乾淨。</p>
+
+    <h3>乾淨重跑:真正的 grep-only 會漏 spec,rubydex 反而幫忙補回</h3>
+    <div class="tbl-wrap">
+      <table class="vt">
+        <thead><tr><th>模型(乾淨)</th><th class="c">+rubydex</th><th class="c">grep(真無MCP)</th><th>怎麼回事</th></tr></thead>
+        <tbody>
+          <tr><td>Haiku</td><td class="c"><span class="vpart">0.79</span></td><td class="c"><span class="vbad">0.57</span></td><td>純 grep 漏掉 5 個 spec + client.rb;rubydex 幫補回</td></tr>
+          <tr><td>Opus</td><td class="c"><span class="vpart">0.64</span></td><td class="c"><span class="vpart">0.64</span></td><td>兩邊打平 —— 原本的「1.00→0.64」消失了</td></tr>
+          <tr><td>Codex</td><td class="c"><span class="vok">1.00</span></td><td class="c"><span class="vbad">0.64</span></td><td>純 grep 漏 5 個 spec;載 rubydex 後全找到</td></tr>
+        </tbody>
+      </table>
     </div>
+    <div class="callout" style="border-left-color:var(--good);background:var(--good-bg)">
+      <span class="lab" style="color:var(--good)">怎麼解讀</span>
+      <p>把對照組修乾淨後,case-1 的真相<b>跟原報告相反</b>:純 grep(真正不載 MCP)會漏掉一批 spec 檔(它們透過關聯間接碰到目標屬性,字面比對掃不到),<b>rubydex 反而幫 Haiku、Codex 把這些補回來</b>(Codex 0.64→1.00)。Opus 則兩邊都 0.64,打平。原報告那句「rubydex 害 Opus 從 1.00 掉到 0.64」完全是污染造成的假象 —— 那個 1.00 是 without 偷用 rubydex 撐出來的。這也是為什麼整份報告的結論方向要改。</p>
+    </div>
+    <p class="note">提醒:這是 n=1。case-1 三個模型的方向一致(grep 漏 spec、rubydex 幫補),算是比較穩的訊號;但單格的小數點別當精確值看。</p>
   </div>
 </section>
 
@@ -390,15 +444,15 @@ hits_total: &lt;n&gt;  hits_A: &lt;n&gt;  hits_B: &lt;n&gt;  hits_C: &lt;n&gt;  
     <p class="sub">官方 benchmark 唯一我們 V1 沒涵蓋的維度 —— 真的去改 code 的 refactor。官方用「改完測試通過」當品質訊號;我們改問「rename 一個 class 需要動到的<b>完整影響清單</b>」,對 ground-truth 影響集算 recall(不跑測試、不依賴 DB,更直接量到爬 code 完不完整)。</p>
     <div class="tbl-wrap">
       <table class="vt">
-        <thead><tr><th>模型</th><th class="c">+rubydex</th><th class="c">grep</th><th>漏了什麼</th></tr></thead>
+        <thead><tr><th>模型(乾淨)</th><th class="c">+rubydex</th><th class="c">grep(真無MCP)</th><th>漏了什麼</th></tr></thead>
         <tbody>
-          <tr><td>Haiku</td><td class="c"><span class="vpart">0.82</span></td><td class="c"><span class="vpart">0.82</span></td><td>定義檔本身(連帶自動載入的檔名連動)+ 2 個測試檔裡的字串引用</td></tr>
+          <tr class="hl-hurt"><td>Haiku</td><td class="c"><span class="vpart">0.88</span></td><td class="c"><span class="vok">1.00</span></td><td>+rubydex 那輪漏掉 <b>2 個 spec 檔</b>裡的字串引用;純 grep 反而全找到</td></tr>
           <tr><td>Opus-low</td><td class="c"><span class="vok">1.00</span></td><td class="c"><span class="vok">1.00</span></td><td>—</td></tr>
           <tr><td>Codex</td><td class="c"><span class="vok">1.00</span></td><td class="c"><span class="vok">1.00</span></td><td>—</td></tr>
         </tbody>
       </table>
     </div>
-    <p class="sub" style="margin-top:8px">強模型滿分、有無 rubydex 都一樣 → 這題 rubydex 無加值。Haiku 兩邊都 0.82,漏的正是兩個鑑別點:<b>autoload 檔名連動</b>(改名要連檔名一起改,否則載入炸)與 <b>測試檔字串引用</b>(字串非常數,語意 indexer 也不認)。</p>
+    <p class="sub" style="margin-top:8px">強模型滿分、有無 rubydex 都一樣 → 這題 rubydex 無加值。<b>Haiku 是這 6 題裡 rubydex 唯二拖累的格之一</b>(1.00→0.88):載了 rubydex 後它偏向走語意查詢、少做 grep 廣掃,於是漏掉兩個 spec 裡的 <b>字串引用</b>(<code>instance_double('...')</code> 那種字串非常數,語意 indexer 本來就不認,得靠 grep 才掃得到)。純 grep 反而把它們都掃到了。這跟 case-1 是同一個機制的兩面:<b>rubydex 在場時 Haiku 容易少 grep</b> —— 在 case-1 那題剛好幫上忙、在這題剛好幫倒忙。</p>
     <div class="callout"><span class="lab">對照官方</span><p>官方「測試通過」訊號無法分辨「漏掉的引用剛好沒被測試覆蓋」;本 case 的 file-level recall 直接抓出這種漏 —— 這是把官方那一格納進我們矩陣後,還能補上的盲點。</p></div>
   </div>
 </section>
@@ -416,19 +470,19 @@ hits_total: &lt;n&gt;  hits_A: &lt;n&gt;  hits_B: &lt;n&gt;  hits_C: &lt;n&gt;  
         <tbody></tbody>
       </table>
     </div>
-    <h3 style="margin-top:24px">value 題的三個結論</h3>
+    <h3 style="margin-top:24px">value 題的三個結論(修正污染後)</h3>
     <div class="cols">
-      <div class="col">
-        <h4>1 · rubydex 幾乎不改變正確性</h4>
-        <p class="sub">9 題裡 8 題 with≈without。唯一明確加分是 <b>case-4 的 Haiku</b>:寬鬆 prompt 下純 grep 把短形式漏光(0),rubydex 幫它抓回全部 —— 對的是「弱模型 + namespace 短形式 + 該用 rubydex」這精確組合。</p>
+      <div class="col yes">
+        <h4>1 · rubydex 的明確加分,集中在 Opus</h4>
+        <p class="sub">9 題大多 with≈without,但乾淨數據下 <b>Opus 出現兩處真加分</b>:<b>case-4</b>(O·grep 短形式全漏 ✗,O+r 補回 ~)與 <b>case-7</b>(O+r 靠 rubydex 確認常數真偽、多抓到一個 silent bug)。這兩類正是 grep 的結構性盲區 —— 把裸短形式解析回 FQN、確認某常數字串是否真指向存在的 class。<br>污染版原本把唯一加分記在「Haiku case-4」,但那是假象:乾淨重跑下 Haiku·grep 自己就掃到了短形式。</p>
       </div>
       <div class="col">
         <h4>2 · 正確性主要看模型強弱</h4>
-        <p class="sub">Opus / Codex 在難題(source_type boss、字串引用、反推 controller#action)穩;Haiku 偏弱 —— 但弱在模型本身,不是 rubydex(這些題 Haiku 多半根本沒叫 rubydex)。</p>
+        <p class="sub">Opus / Codex 在難題(source_type silent bug、字串引用、反推 controller#action)較穩;Haiku 偏弱 —— 但弱在模型本身,不是 rubydex(這些題 Haiku 多半根本沒叫 rubydex)。</p>
       </div>
       <div class="col">
         <h4>3 · V1 的幾個狀況沒再出現</h4>
-        <p class="sub">class_eval 的「太信嚴格 AST 而答 def 不存在」、case-1 的「卡住」—— 在自然選用 + 模型會真的去讀原始碼之後,V2 裡都沒再看到。</p>
+        <p class="sub">class_eval 的「太信嚴格 AST 而答 def 不存在」、case-1 的「卡住全漏」—— 在自然選用 + 模型會真的去讀原始碼之後,V2 裡都沒再看到。</p>
       </div>
     </div>
   </div>
@@ -439,24 +493,26 @@ hits_total: &lt;n&gt;  hits_A: &lt;n&gt;  hits_B: &lt;n&gt;  hits_C: &lt;n&gt;  
     <div class="sec-head"><span class="sec-num">07</span><h2>結論:自然選用下,該不該裝 rubydex</h2></div>
     <div class="cols">
       <div class="col yes">
-        <h4>✓ 值得用的場合</h4>
+        <h4>✓ 看到 recall 加分的場合</h4>
         <ul>
-          <li>多 namespace 同名 class 區分 <span class="pill">case-4 · 4A</span></li>
-          <li>短形式 ↔ FQN 識別,<b>且配弱模型 + 明確指示</b></li>
-          <li>把它當「加速器」而非「改變結果」(強模型端)</li>
+          <li>純 grep 會漏的<b>間接 / 關聯引用</b>(spec 透過關聯碰到目標)<span class="pill">case-1</span></li>
+          <li>裸短形式 ↔ FQN 解析、常數真偽判定 <span class="pill">case-4 · 7(Opus)</span></li>
+          <li>多 namespace 同名 class 區分 <span class="pill">case-4A</span></li>
+          <li>弱模型(Haiku)在 hash dispatch 類題,rubydex 把漏的補回 <span class="pill">case-13 0.50→1.00</span></li>
         </ul>
       </div>
       <div class="col no">
-        <h4>△ 幫助有限 / 需留意</h4>
+        <h4>△ 仍需留意 / 偶爾倒扣</h4>
         <ul>
-          <li>純丟著讓模型自選 —— recall 多半中性、偶爾偏負 <span class="pill">case-1 · 2 · 13</span></li>
-          <li>較小的模型(Haiku):rubydex 在場時容易少做 grep、漏掉 spec</li>
-          <li>文本 / 動態 / 外部資源 —— 模型通常會自己跳過 rubydex</li>
+          <li>還是<b>混合結果</b>:18 組裡 5 幫、2 傷、11 平,不是穩定全贏</li>
+          <li>較小的模型(Haiku):rubydex 在場時有時少做 grep、漏掉 spec 字串 <span class="pill">case-14 · 2(Codex)</span></li>
+          <li>Opus 端成本仍 +48%;每格 n=1,變異大,別過度解讀單一數字</li>
         </ul>
       </div>
     </div>
-    <p style="margin-top:22px">官方公布的 30–47% 提升,是在 rubydex 最擅長的任務(IRB 常數 rename)上量到的,很有參考價值。本實驗想補充的是另一個角度:把題庫放寬到 15 種真實 Rails 手法、再讓模型自然選用後,<b>這樣的優勢在我們的題庫裡就沒那麼普遍</b>。rubydex 的價值比較集中在「對的題(多 namespace 常數)+ 對的模型 + 明確指示」;若只是默認全掛、丟著讓它自選,在這個題庫沒看到 recall 上的好處,Opus 端成本還高一些。反過來說,<b>放開 grep / Glob / bash 之後,純 LLM 的程式碼搜尋能力,其實比想像中更穩。</b></p>
-    <div class="callout" style="border-left-color:var(--accent);background:var(--accent-soft)"><span class="lab" style="color:var(--accent)">小提醒</span><p>這些結論只在「本題庫 + 自然選用 + 這三個模型」的範圍內成立,屬於 V1 的延伸觀察,不是對 rubydex 或官方 benchmark 的否定。不同題型、不同用法很可能得到不同結果 —— 歡迎在自己的 codebase 上試。</p></div>
+    <p style="margin-top:22px">先講最重要的:<b>原 V2 報告的核心結論(「rubydex 中性偏負、純 LLM 被低估」)是建立在一個被污染的對照組上,已作廢。</b>修掉污染、把「真正不載 MCP」的基線拉回真實高度後,rubydex 對 recall 的幫助比原測明顯不少 —— 18 組對照裡提升的從 1 組變成 5 組,最清楚的是 case-1(純 grep 漏 spec、rubydex 補回)。</p>
+    <p>但也別過度修正成另一個極端:這仍是<b>混合結果、變異很大(每格只跑一次)</b>。rubydex 並非穩定全贏 —— 還是有 2 組被它拖低(多半是弱模型載了 rubydex 後少做 grep 廣掃、漏掉 spec 字串)。官方公布的 30–47% 提升是在它最擅長的任務(IRB 常數 rename)上量到的;本實驗補充的是「放寬到 15 種真實 Rails 手法 + 自然選用」這個角度,結論是:<b>rubydex 對 recall 確實有正貢獻,集中在 grep 的結構性盲區(間接引用、短形式 / 常數解析),但不是無腦全掛就穩賺。</b></p>
+    <div class="callout" style="border-left-color:var(--accent);background:var(--accent-soft)"><span class="lab" style="color:var(--accent)">小提醒</span><p>這些結論只在「本題庫 + 自然選用 + 這三個模型 + n=1」的範圍內成立,屬於 V1 的延伸觀察,不是對 rubydex 或官方 benchmark 的否定。我們也很感謝這次的污染 bug 逼我們把對照組做乾淨 —— 想提醒同樣在做 MCP benchmark 的人:<b>「不載 MCP」的對照組要確認 CLI 沒從上層目錄或全域設定偷載進來</b>。不同題型、不同用法很可能得到不同結果,歡迎在自己的 codebase 上試。</p></div>
   </div>
 </section>
 
@@ -465,20 +521,24 @@ hits_total: &lt;n&gt;  hits_A: &lt;n&gt;  hits_B: &lt;n&gt;  hits_C: &lt;n&gt;  
     <div class="anon">
       <b>關於匿名化</b> — 所有 <b>數字(recall / 成本 / 工具呼叫)皆為真實測試結果</b>。為保護受測來源,生產專案以 <code>App-A / B / C</code> 表示,業務 class / 路徑換成中性虛構名(保留結構難度、抽掉業務語意)。V2 與 <a href="./index.html">V1 報告</a> 用同一套匿名規則。
     </div>
-    <p>V2 測試:2026-05-22/23。設定:prompt 最大模糊化 · 全工具開放 · with/without 只差載不載 MCP(自然選用)。對照模型:Claude Haiku 4.5 · Claude Opus 4.7 (low effort) · GPT-5.5 (codex CLI)。</p>
+    <div class="anon">
+      <b>關於這次勘誤</b> — 初版 V2(2026-05-22/23)的「不載 MCP」對照組因 CLI 自動發現上層 / 全域設定而偷載了 rubydex,with/without 比較失效。<b>本修訂版(2026-05-24)</b>用 <code>--strict-mcp-config</code>(Claude)與 <code>--ignore-user-config</code>(codex)做真正隔離,三模型全部重跑。<b>只動了對照組的環境隔離</b>,prompt / 題庫 / 計分皆未變。原污染數據保留為備份(<code>results/_dirty_*</code>),作為「子目錄會自動載 MCP」的證據。
+    </div>
+    <p>V2 乾淨重跑:2026-05-24(初版 2026-05-22/23,已勘誤)。設定:prompt 最大模糊化 · 全工具開放 · with/without 只差載不載 MCP(自然選用,已做乾淨隔離)。對照模型:Claude Haiku 4.5 · Claude Opus 4.7 (low effort) · GPT-5.5 (codex CLI)。每格 n=1。</p>
     <p>方法論與完整數據詳見 repo;V1(強迫用工具)對照見 <a href="./index.html">index.html</a>。</p>
   </div>
 </footer>
 
 <script>
 // ---- recall heatmap (6 機器計分題) ----
+// 乾淨重跑數據(2026-05-24,修正 MCP 污染後)。hw=Haiku+rubydex hwo=Haiku grep(真無MCP) 依此類推。
 const rcases=[
- {id:'1', tech:'has_one + delegate 鏈式', app:'A', h:{hw:0.643,hwo:0.786,ow:0.643,owo:1.000,cw:0.643,cwo:0.571}},
- {id:'2', tech:'AASM 動態 event 呼叫點', app:'A', h:{hw:0.833,hwo:1.000,ow:1.000,owo:1.000,cw:0.833,cwo:0.833}},
+ {id:'1', tech:'has_one + delegate 鏈式', app:'A', h:{hw:0.786,hwo:0.571,ow:0.643,owo:0.643,cw:1.000,cwo:0.643}},
+ {id:'2', tech:'AASM 動態 event 呼叫點', app:'A', h:{hw:0.917,hwo:0.833,ow:0.917,owo:0.833,cw:0.833,cwo:1.000}},
  {id:'5', tech:'Sidekiq YAML 字串引用', app:'B', h:{hw:1.000,hwo:1.000,ow:1.000,owo:1.000,cw:1.000,cwo:1.000}},
  {id:'6', tech:'重開 Object monkey patch', app:'B', h:{hw:1.000,hwo:1.000,ow:1.000,owo:1.000,cw:1.000,cwo:1.000}},
- {id:'13', tech:'Hash dispatch + 類似表', app:'A', h:{hw:0.500,hwo:0.750,ow:1.000,owo:1.000,cw:1.000,cwo:1.000}},
- {id:'14', tech:'rename 影響面（新）', app:'A', h:{hw:0.824,hwo:0.824,ow:1.000,owo:1.000,cw:1.000,cwo:1.000}},
+ {id:'13', tech:'Hash dispatch + 類似表', app:'A', h:{hw:1.000,hwo:0.500,ow:1.000,owo:1.000,cw:1.000,cwo:1.000}},
+ {id:'14', tech:'rename 影響面（新）', app:'A', h:{hw:0.882,hwo:1.000,ow:1.000,owo:1.000,cw:1.000,cwo:1.000}},
 ];
 const condOrder=['hw','hwo','ow','owo','cw','cwo'];
 const pairOf={hw:'hwo',ow:'owo',cw:'cwo'}; // with -> 對應 without
@@ -489,9 +549,12 @@ function rClass(v){ if(v>=0.999) return 'c-good'; if(v>=0.8) return 'c-miss1'; i
     let row=`<td class="cid">case-${c.id}</td>`;
     condOrder.forEach(k=>{
       const v=c.h[k];
-      let hurt='';
-      if(pairOf[k] && v < c.h[pairOf[k]]-0.001) hurt=' hl-hurt'; // with < without
-      row+=`<td class="cell ${rClass(v)}${hurt}">${v.toFixed(2)}</td>`;
+      let ring='';
+      if(pairOf[k]){ // 只在 with 欄標記
+        if(v > c.h[pairOf[k]]+0.001) ring=' ring-help';      // with > without:rubydex 幫到
+        else if(v < c.h[pairOf[k]]-0.001) ring=' ring-hurt'; // with < without:rubydex 拖累
+      }
+      row+=`<td class="cell ${rClass(v)}${ring}">${v.toFixed(2)}</td>`;
     });
     const tr=document.createElement('tr'); tr.innerHTML=row; tb.appendChild(tr);
   });
@@ -499,15 +562,16 @@ function rClass(v){ if(v>=0.999) return 'c-good'; if(v>=0.8) return 'c-miss1'; i
 
 // ---- value verdict table ----
 const M={ok:'<span class="vok">✓</span>', part:'<span class="vpart">~</span>', bad:'<span class="vbad">✗</span>'};
+// 乾淨重跑判讀(2026-05-24)。欄序:H+r H·grep O+r O·grep C+r C·grep
 const vcases=[
  {id:'3', key:'def 在 class_eval 區塊、動態生 6 個方法', v:['ok','ok','ok','ok','ok','ok']},
- {id:'7', key:'9 個 distinct 字串值、4 個 silent bug', v:['part','part','ok','ok','part','ok']},
- {id:'8', key:'短形式↔FQN：full 11 / short 14 / total 25', v:['part','part','ok','ok','ok','ok']},
+ {id:'7', key:'9 個 distinct 字串值、4 個 silent bug', v:['part','part','ok','part','part','part'], note:'Opus·grep 失去 rubydex 後,把 production 常數誤判成「只在 spec 出現」,漏掉 DueDetail 那個 bug;O+r 靠 rubydex 確認、抓到了'},
+ {id:'8', key:'短形式↔FQN：full 11 / short 14 / total 25', v:['ok','ok','ok','ok','ok','ok']},
  {id:'9', key:'3 callback（2 symbol + 1 block）、2 只被 callback 用', v:['ok','ok','ok','ok','ok','ok']},
- {id:'4', key:'多 namespace 給 FQN：total≈101（含短形式）', v:['part','bad','part','part','part','part'], note:'Haiku·grep 漏光短形式；rubydex 幫它抓回'},
+ {id:'4', key:'多 namespace 給 FQN：total≈101（含短形式）', v:['part','part','part','bad','part','part'], note:'這次漏光短形式的是 Opus·grep(hits_short_form=0),O+r 補回 → rubydex 真加分。Haiku·grep 乾淨版反而自己掃到 18 個短形式(污染版「Haiku·grep 靠 rubydex 救回」是假象)'},
  {id:'4A', key:'多 namespace 不給 FQN：4 個同名 class、total≈141', v:['ok','ok','ok','ok','ok','ok']},
  {id:'10', key:'i18n：14 鍵 / 動態 5 / 改名動 4 檔', v:['part','part','part','part','part','part']},
- {id:'11', key:'routes helper → controller#edit / callers 3 / 改名動 3', v:['part','part','part','part','part','part'], note:'反推 controller#action 全員偏弱，Codex 最準'},
+ {id:'11', key:'routes helper → controller#edit / callers 3 / 改名動 3', v:['part','part','part','part','part','part'], note:'反推 controller#action 全員都對;但 callers / 改名影響檔數普遍過報,維持 ~'},
  {id:'12', key:'method_missing：own def 3 / 內部物件型別 1', v:['ok','ok','ok','ok','ok','ok']},
 ];
 (function(){
@@ -519,12 +583,13 @@ const vcases=[
   });
 })();
 
-// ---- cost overhead bars (with vs without, 整輪總成本相對) ----
+// ---- cost overhead bars (with vs without, 整輪 15 題總成本相對;乾淨重跑) ----
+// 實測:Haiku with $1.69 / grep $1.82;Opus with $8.60 / grep $5.80。grep=各模型自身基準 100。
 const cost=[
- {name:'Haiku · grep（基準）', pct:100, cls:'win', lbl:'基準'},
- {name:'Haiku · +rubydex', pct:106, cls:'mid', lbl:'+6%'},
- {name:'Opus · grep（基準）', pct:100, cls:'win', lbl:'基準'},
- {name:'Opus · +rubydex', pct:153, cls:'bad', lbl:'+53%'},
+ {name:'Haiku · grep（基準）', pct:100, cls:'win', lbl:'基準 $1.82'},
+ {name:'Haiku · +rubydex', pct:93, cls:'win', lbl:'-7% $1.69'},
+ {name:'Opus · grep（基準）', pct:100, cls:'win', lbl:'基準 $5.80'},
+ {name:'Opus · +rubydex', pct:148, cls:'bad', lbl:'+48% $8.60'},
 ];
 (function(){
   const wrap=document.getElementById('costBars');
@@ -532,7 +597,7 @@ const cost=[
     const row=document.createElement('div'); row.className='bar-row';
     row.innerHTML=`<div class="lbl">${r.name}</div><div><div class="track"><div class="fill ${r.cls}" style="width:0">${r.lbl}</div></div></div>`;
     wrap.appendChild(row);
-    setTimeout(()=>{ row.querySelector('.fill').style.width=Math.min(100,r.pct/153*100)+'%'; }, 120+i*90);
+    setTimeout(()=>{ row.querySelector('.fill').style.width=Math.min(100,r.pct/148*100)+'%'; }, 120+i*90);
   });
 })();
 
