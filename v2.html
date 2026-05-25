@@ -572,7 +572,7 @@ const vcases=[
  {id:'4A', key:'多 namespace 不給 FQN：4 個同名 class、total≈141', v:['ok','ok','ok','ok','ok','ok']},
  {id:'10', key:'i18n：14 鍵 / 動態 5 / 改名動 4 檔', v:['part','part','part','part','part','part']},
  {id:'11', key:'routes helper → controller#edit / callers 3 / 改名動 3', v:['part','part','part','part','part','part'], note:'反推 controller#action 全員都對;但 callers / 改名影響檔數普遍過報,維持 ~'},
- {id:'12', key:'method_missing：own def 3 / 內部物件型別 1', v:['ok','ok','ok','ok','ok','ok']},
+ {id:'12', key:'method_missing：own def 3 / 內部物件型別 4', v:['ok','ok','ok','ok','ok','ok'], note:'勘誤(2026-05-25):舊 answer key 誤寫「型別 1」,核 live code（ledger_factory.rb 的 steps 回 build_ledger_by_user 的 4 分支,非內層 Ledger）後更正為 4 —— 答 4 的模型其實是對的。詳見 V3 報告勘誤段。'},
 ];
 (function(){
   const tb=document.querySelector('#valueTable tbody');
