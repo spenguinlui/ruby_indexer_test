@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>V4 · Rubydex Benchmark — 外層 orchestrator MCP,全 15 題 × 3 模型</title>
+<meta name="description" content="V4 = 把 routing 拉到 LLM 外面:單一 find_code MCP 工具 + rule-based intent classifier 路由到 rubydex/ripgrep + Aider 風格 repomap primer。全 15 題 × 3 模型,跟 V2-grep / V2-rubydex / V3-selector 同一把尺比。結論:外層路由可行但價值強烈題型相依 —— 定位題持平(弱模型還省 context)、計數窮舉題被 find_code 的 top_k 截斷打崩、盲區題無解;value 品質三模型全降。pure single-channel 不可行,hybrid 才現實。6 機器題 file-recall + 9 value 題 co-judge。n=1。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#f4efe6; --card:#fbf9f4; --ink:#211f1c; --muted:#6b6358;
+    --line:#e2d9c8; --line-strong:#ccc0a8;
+    --accent:#0f766e; --accent-soft:#cfeae6;
+    --good:#15803d; --good-bg:#dcfce7; --good-line:#a7e3bc;
+    --miss:#b91c1c; --miss-bg:#fde2e2; --miss-line:#f3b4b4;
+    --over:#b45309; --over-bg:#fdeccf; --over-line:#eecb8e;
+    --mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+    --disp:'Space Grotesk',system-ui,sans-serif;
+    --body:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC",sans-serif;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0; font-family:var(--body); color:var(--ink); line-height:1.65;
+    background:
+      radial-gradient(1200px 600px at 80% -10%, #fbf6ec 0%, rgba(251,246,236,0) 60%),
+      radial-gradient(900px 500px at -10% 10%, #f1ece0 0%, rgba(241,236,224,0) 55%),
+      var(--paper);
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1080px; margin:0 auto; padding:0 24px}
+  a{color:var(--accent); text-underline-offset:3px}
+
+  .sidenav{position:fixed; left:24px; top:50%; transform:translateY(-50%); z-index:60;
+    display:flex; flex-direction:column; gap:1px;
+    background:rgba(255,255,255,.6); backdrop-filter:blur(12px) saturate(1.1); -webkit-backdrop-filter:blur(12px) saturate(1.1);
+    border:1px solid rgba(255,255,255,.8); box-shadow:0 10px 34px rgba(40,30,10,.12); border-radius:16px; padding:9px}
+  .sidenav-h{font-family:var(--mono); font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:var(--muted); padding:4px 12px 7px}
+  .sidenav a{display:flex; align-items:center; gap:10px; text-decoration:none; color:var(--muted);
+    padding:7px 14px 7px 11px; border-radius:10px; font-family:var(--mono); font-size:12px; line-height:1; white-space:nowrap; transition:background .15s,color .15s}
+  .sidenav .dot{width:6px; height:6px; border-radius:50%; background:var(--line-strong); transition:all .2s; flex:0 0 auto}
+  .sidenav a:hover{background:rgba(255,255,255,.72)}
+  .sidenav a:hover .lbl{color:var(--ink)}
+  .sidenav a.active{background:var(--accent-soft)}
+  .sidenav a.active .dot{background:var(--accent); transform:scale(1.35)}
+  .sidenav a.active .lbl{color:var(--accent); font-weight:600}
+  @media(max-width:1340px){ .sidenav{display:none} }
+
+  header.hero{padding:72px 0 40px; border-bottom:1px solid var(--line)}
+  .kicker{font-family:var(--mono); font-size:12.5px; letter-spacing:.16em; text-transform:uppercase;
+    color:var(--accent); display:inline-flex; align-items:center; gap:9px}
+  .kicker::before{content:""; width:26px; height:1px; background:var(--accent)}
+  h1{font-family:var(--disp); font-weight:700; font-size:clamp(34px,5.4vw,58px);
+    line-height:1.04; letter-spacing:-.02em; margin:18px 0 0}
+  h1 em{font-style:normal; color:var(--accent)}
+  .lede{font-size:clamp(16px,2.1vw,20px); color:var(--muted); max-width:760px; margin:20px 0 0}
+  .meta{font-family:var(--mono); font-size:12.5px; color:var(--muted); margin-top:22px; display:flex; flex-wrap:wrap; gap:6px 18px}
+  .meta b{color:var(--ink); font-weight:500}
+
+  .stats{display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin:38px 0 0}
+  .stat{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px 18px 16px}
+  .stat .n{font-family:var(--disp); font-weight:700; font-size:29px; line-height:1; letter-spacing:-.02em}
+  .stat .l{font-size:12.5px; color:var(--muted); margin-top:8px}
+  .stat.accent .n{color:var(--accent)}
+  .stat.bad .n{color:var(--miss)}
+
+  section{padding:54px 0; border-bottom:1px solid var(--line)}
+  .sec-head{display:flex; align-items:baseline; gap:14px; margin:0 0 22px}
+  .sec-num{font-family:var(--mono); font-size:13px; color:var(--accent); font-weight:500}
+  h2{font-family:var(--disp); font-weight:600; font-size:clamp(23px,3.2vw,30px); letter-spacing:-.01em; margin:0}
+  h3{font-family:var(--disp); font-weight:600; font-size:18px; margin:30px 0 12px}
+  p{margin:0 0 14px}
+  .sub{color:var(--muted)}
+
+  .tldr{background:linear-gradient(180deg,#15433f,#0f2f2c); color:#eafaf6; border-radius:18px;
+    padding:30px 32px; font-size:clamp(16px,2.1vw,19px); line-height:1.6}
+  .tldr .lab{font-family:var(--mono); font-size:12px; letter-spacing:.16em; text-transform:uppercase; color:#79d8c9}
+  .tldr strong{color:#fff}
+  .tldr p{margin:12px 0 0}
+  .tldr p:first-of-type{margin-top:14px}
+
+  .callout{border-left:3px solid var(--miss); background:var(--miss-bg); border-radius:0 12px 12px 0;
+    padding:16px 20px; margin:20px 0}
+  .callout .lab{font-family:var(--mono); font-size:11.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--miss); font-weight:700}
+  .callout p{margin:6px 0 0; font-size:15px}
+  .callout.acc{border-left-color:var(--accent); background:var(--accent-soft)}
+  .callout.acc .lab{color:var(--accent)}
+  .callout.warn{border-left-color:var(--over); background:var(--over-bg)}
+  .callout.warn .lab{color:var(--over)}
+
+  .tbl-wrap{overflow-x:auto; border:1px solid var(--line); border-radius:14px; background:var(--card)}
+  table{border-collapse:collapse; width:100%; font-size:14px}
+  th,td{padding:11px 13px; text-align:left; border-bottom:1px solid var(--line); white-space:nowrap}
+  thead th{font-family:var(--mono); font-size:11.5px; letter-spacing:.04em; text-transform:uppercase;
+    color:var(--muted); font-weight:500; background:#f7f2e8}
+  tbody tr:last-child td{border-bottom:none}
+  tbody tr:hover{background:#f7f2e8}
+  td.tech{white-space:normal; min-width:160px; font-weight:500}
+  .num{font-family:var(--mono); text-align:right}
+  .cid{font-family:var(--mono); font-weight:700; color:var(--ink)}
+
+  .legend{display:flex; flex-wrap:wrap; gap:6px 16px; font-family:var(--mono); font-size:11.5px; color:var(--muted); margin:0 0 14px}
+  .legend i{display:inline-block; width:13px; height:13px; border-radius:3px; vertical-align:-2px; margin-right:6px; border:1px solid rgba(0,0,0,.08)}
+  .hm td.cell{font-family:var(--mono); text-align:center; font-weight:600; cursor:default; min-width:54px}
+  .hm td.cell .d{font-size:9.5px; opacity:.7; display:block; margin-top:1px; font-weight:500}
+  .hm thead th.grp{text-align:center; border-left:2px solid var(--line-strong)}
+  .hm thead th.sub{text-align:center; font-size:10px}
+  .hm td.gleft{border-left:2px solid var(--line-strong)}
+  .hm td.cap{font-family:var(--body); font-weight:500; white-space:nowrap}
+  .c-good{background:var(--good-bg); color:var(--good)}
+  .c-miss1{background:#fdecec; color:var(--miss)}
+  .c-miss2{background:#fbd4d4; color:#7f1212}
+  .c-miss3{background:#f3a8a8; color:#5c0a0a}
+  .c-na{background:#efeae0; color:#a59c8c}
+  .c-ok{background:var(--good-bg); color:var(--good)}
+  .c-part{background:#fdf0d8; color:var(--over)}
+  .c-bad{background:#f3a8a8; color:#5c0a0a}
+  .ktag{font-family:var(--mono); font-size:10px; padding:1px 6px; border-radius:20px; border:1px solid var(--line-strong); color:var(--muted)}
+  .ktag.struct{color:var(--accent); border-color:var(--accent-soft); background:var(--accent-soft)}
+  .ktag.blind{color:var(--over); border-color:var(--over-line); background:var(--over-bg)}
+
+  .bars{display:flex; flex-direction:column; gap:11px; margin-top:6px}
+  .bar-row{display:grid; grid-template-columns:160px 1fr; gap:14px; align-items:center}
+  .bar-row .lbl{font-family:var(--mono); font-size:12.5px; font-weight:500; text-align:right}
+  .bar-row .lbl .tag{display:block; font-size:10px; color:var(--muted); font-weight:400}
+  .track{position:relative; height:28px; background:#efe8db; border-radius:8px; overflow:hidden}
+  .fill{position:absolute; left:0; top:0; bottom:0; border-radius:8px; display:flex; align-items:center;
+    justify-content:flex-end; padding:0 10px; font-family:var(--mono); font-size:12px; color:#fff; font-weight:500;
+    min-width:46px; transition:width .9s cubic-bezier(.2,.8,.2,1)}
+  .fill.win{background:linear-gradient(90deg,#16a34a,#15803d)}
+  .fill.mid{background:linear-gradient(90deg,#d99220,#b45309)}
+  .fill.bad{background:linear-gradient(90deg,#dc4747,#b91c1c)}
+
+  .cols{display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:8px}
+  .col{border:1px solid var(--line); border-radius:14px; padding:20px 22px; background:var(--card)}
+  .col.yes{border-color:var(--good-line); background:linear-gradient(180deg,#f1faf3,#fbf9f4)}
+  .col.no{border-color:var(--over-line); background:linear-gradient(180deg,#fdf6ea,#fbf9f4)}
+  .col h4{font-family:var(--disp); font-size:16px; margin:0 0 12px; display:flex; align-items:center; gap:8px}
+  .col.yes h4{color:var(--good)} .col.no h4{color:var(--over)}
+  .col ul{margin:0; padding-left:18px} .col li{margin:0 0 8px; font-size:14px}
+  .col code{font-family:var(--mono); font-size:12.5px; background:#00000008; padding:1px 5px; border-radius:5px}
+
+  pre{font-family:var(--mono); font-size:12.5px; line-height:1.6; background:#1c2522; color:#dbe9e5;
+    border-radius:12px; padding:18px 20px; overflow-x:auto; margin:14px 0}
+  pre .cm{color:#7fae9f} pre .hi{color:#ffd479}
+  code{font-family:var(--mono)}
+  .grid2{display:grid; grid-template-columns:1fr 1fr; gap:18px}
+  .note{font-size:13px; color:var(--muted)}
+
+  .vswitch{display:inline-flex; gap:2px; margin-top:18px; background:var(--card); border:1px solid var(--line); border-radius:11px; padding:3px}
+  .vswitch a{font-family:var(--mono); font-size:12.5px; text-decoration:none; color:var(--muted); padding:6px 14px; border-radius:8px}
+  .vswitch a.cur{background:var(--accent); color:#fff; font-weight:600}
+
+  footer{padding:46px 0 70px; color:var(--muted); font-size:13px}
+  footer .anon{background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px 20px; margin:0 0 22px; font-size:13px}
+  footer code{background:#00000008; padding:1px 5px; border-radius:5px; font-size:12px}
+
+  /* per-case detail */
+  .mtoggle{display:inline-flex; border:1px solid var(--line-strong); border-radius:11px; overflow:hidden; background:var(--card); margin:0 0 18px}
+  .mtoggle button{font-family:var(--mono); font-size:13px; border:none; background:transparent; color:var(--muted); padding:9px 18px; cursor:pointer}
+  .mtoggle button.on{background:var(--accent); color:#fff; font-weight:600}
+  .dcase{border:1px solid var(--line); border-radius:14px; background:var(--card); margin:0 0 14px; overflow:hidden}
+  .dcase-head{display:grid; grid-template-columns:52px 1fr auto; gap:14px; align-items:center; padding:14px 18px; cursor:pointer; user-select:none}
+  .dcase-head:hover{background:#f7f2e8}
+  .dcase-head .cid{font-family:var(--mono); font-weight:700; color:var(--accent)}
+  .dcase-head .t{font-weight:600; font-size:15px}
+  .dcase-head .t .kk{font-family:var(--mono); font-size:10px; margin-left:6px}
+  .dcase-head .vtag{font-family:var(--mono); font-size:11px; font-weight:700; padding:3px 10px; border-radius:20px}
+  .vtag.pos{color:var(--good); background:var(--good-bg)} .vtag.neg{color:var(--over); background:var(--over-bg)} .vtag.neu{color:var(--muted); background:#efe8db}
+  .dcase-body{display:none; padding:4px 18px 20px}
+  .dcase.open .dcase-body{display:block}
+  .dtbl{width:100%; border-collapse:collapse; font-size:13px; margin:6px 0 0}
+  .dtbl th,.dtbl td{padding:8px 10px; border-bottom:1px solid var(--line); text-align:right; font-family:var(--mono); white-space:nowrap}
+  .dtbl th{font-size:10.5px; letter-spacing:.04em; text-transform:uppercase; color:var(--muted); font-weight:500}
+  .dtbl td.arm,.dtbl th.arm{text-align:left; font-weight:600; font-family:var(--body)}
+  .dtbl tr.v1 td{color:var(--muted); background:#faf6ee}
+  .dtbl tr.sel td{background:#f1faf3}
+  .dtbl .corr{font-weight:700; border-radius:6px; padding:2px 7px; font-family:var(--mono)}
+  .dnote{margin:14px 0 0; font-size:14px; line-height:1.7; background:#f7f2e8; border-left:3px solid var(--accent); border-radius:0 10px 10px 0; padding:12px 16px}
+  .dnote b{color:var(--ink)}
+  @media(max-width:760px){
+    .stats{grid-template-columns:repeat(2,1fr)}
+    .cols,.grid2{grid-template-columns:1fr}
+    .bar-row{grid-template-columns:120px 1fr}
+    h1{font-size:34px}
+    .dtbl{font-size:11px} .dtbl th,.dtbl td{padding:6px 4px}
+  }
+</style>
+</head>
+<body>
+
+<nav class="sidenav" id="sidenav" aria-label="章節導覽">
+  <div class="sidenav-h">V4 目錄</div>
+  <a href="#tldr"><span class="dot"></span><span class="lbl">摘要</span></a>
+  <a href="#design"><span class="dot"></span><span class="lbl">01 V3→V4 架構</span></a>
+  <a href="#main"><span class="dot"></span><span class="lbl">02 全 15 題主表</span></a>
+  <a href="#detail"><span class="dot"></span><span class="lbl">★ 逐題詳表</span></a>
+  <a href="#helps"><span class="dot"></span><span class="lbl">03 題型相依</span></a>
+  <a href="#routing"><span class="dot"></span><span class="lbl">04 find_code 取代 grep</span></a>
+  <a href="#efficiency"><span class="dot"></span><span class="lbl">05 讀檔/token</span></a>
+  <a href="#corrections"><span class="dot"></span><span class="lbl">06 勘誤/方法</span></a>
+  <a href="#verdict"><span class="dot"></span><span class="lbl">07 結論</span></a>
+</nav>
+
+<header class="hero">
+  <div class="wrap">
+    <span class="kicker">Code-Search Benchmark · V4 · orchestrator × 全 15 題 · 2026</span>
+    <h1>把 routing 拉到 LLM <em>外面</em>:<br>外層 orchestrator MCP,真的比叫模型自己選好嗎?</h1>
+    <p class="lede">V3 證明 prompt 層的「叫模型自己當選擇器」路由不可靠(結構主場不叫 rubydex、字串盲區猛叫)。<b>V4</b> 把 routing 拉出 prompt、做成外層 MCP:LLM 只看到一個 <code>find_code(query, hints?)</code> 工具,server 內部用 rule-based intent classifier 路由到 rubydex(結構)或 ripgrep(字串),再加一個 Aider 風格的 <code>get_codebase_map</code> primer。這次把 V4-orchestrator 跑滿全 15 題 × 3 模型,跟 V2-grep / V2-rubydex / V3-selector 放在同一把尺下比。問題:外層主動路由,到底有沒有兌現 rubydex 的價值?</p>
+    <div class="vswitch">
+      <a href="./index.html">V1 報告</a>
+      <a href="./v2.html">V2 報告</a>
+      <a href="./v3.html">V3 報告</a>
+      <a class="cur" href="./v4.html">V4 報告</a>
+    </div>
+    <div class="meta">
+      <span><b>15</b> cases(6 機器計分 + 9 判讀)</span>
+      <span><b>3</b> models(Haiku 4.5 · Opus 4.7-low · GPT-5.5)</span>
+      <span><b>4</b> 條件(grep / rubydex / selector / orchestrator)</span>
+      <span><b>n=1</b>,看方向不看小數點</span>
+    </div>
+    <div class="stats">
+      <div class="stat accent"><div class="n">題型相依</div><div class="l">V4 不是一致升或降 —— 定位題(找位置/找全少量)持平,計數窮舉題(case-4/4A/8)崩,盲區題(case-7)無解。價值強烈取決於題型</div></div>
+      <div class="stat bad"><div class="n">−2 ~ −3 / 9</div><div class="l">value 品質三模型全降(Haiku 7.5→5.0、Opus 8.0→6.0、Codex 8.5→5.5),單一原因:find_code 的 top_k 截斷讓計數題報殘缺數字</div></div>
+      <div class="stat"><div class="n">ctx −33% / +120%</div><div class="l">效率模型相依:弱模型 Haiku 省 context(find_code 取代廣搜)、強模型 Opus 反增(惜字如金被 primer+候選強灌)</div></div>
+      <div class="stat accent"><div class="n">case-1: 0.64→1.0</div><div class="l">V4 最大亮點:delegate 鏈引用,find_constant_references enrichment 把 Haiku/Opus 衝到滿分</div></div>
+    </div>
+  </div>
+</header>
+
+<section id="tldr">
+  <div class="wrap">
+    <div class="tldr">
+      <span class="lab">一句話結論</span>
+      <p><strong>外層 orchestrator 不是萬靈丹:它的價值強烈題型相依。「找位置 / 找全少量引用」題持平甚至更好(弱模型還省 context),但「列舉 / 計數所有引用」題被 find_code 的 top_k 截斷打崩,盲區推理題照樣無解。</strong></p>
+      <p><strong>機器 6 題(file-level recall)V4 持平/略升</strong>:Haiku 平均 .94→.96、case-1(delegate 鏈)更從 V3 的 0.64 衝到 1.0 —— <code>find_constant_references</code> enrichment 一次抓全引用。但 <strong>value 9 題品質三模型全降</strong>(Haiku 7.5→5.0、Opus 8.0→6.0、Codex 8.5→5.5 / 滿分 9),單一兇手:<strong>計數窮舉題(case-4/4A/8)</strong>。find_code 預設只回 top_k=10 個代表性候選、不回 total、rg 後端每檔取樣 → LLM 看到 10 筆就以為是全部,把「~100 筆引用」報成 33-38 筆。機器題沒崩是因為它算「哪些檔」(distinct files 少、top_k 夠),計數題要「總共幾筆」就崩。</p>
+      <p><strong>效率則是模型相依的反轉</strong>:弱模型 Haiku 用 find_code 取代廣搜 → 6 機器題 ctx 全省(−14%~−50%);但強模型 Opus 本來就惜字如金(V3 幾乎不主動叫工具),被 orchestrator + primer 強灌候選後 ctx 反增 +120%。呼應 V3 的「MCP 載入稅對 Opus 是淨負擔」。</p>
+      <p>三個 caveat:① <strong>case-7</strong> silent bug 三模型 9 格仍全摃龜(orchestrator 對推理盲點無增益)。② V4 toolset = V3 + orchestrator 疊加;曾試 <code>--disallowedTools</code> 拔掉 raw grep/Read 強制單一通道,recall 反而更崩(case-2 1.0→0.0)—— pure single-channel 不可行,hybrid 才是現實。③ 全程 <strong>n=1</strong>。</p>
+    </div>
+  </div>
+</section>
+
+<section id="design">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">01</span><h2>V2 → V3 → V4:從「丟工具箱」到「外層 orchestrator」</h2></div>
+    <p class="sub">四代測的是「該怎麼把一個程式碼索引接進 LLM」的不同姿勢。任務、題庫不變,只變「rubydex 怎麼接」—— 從 prompt 點名(V1)、丟工具箱(V2)、叫模型自己路由(V3),到 V4 把路由拉到 LLM 外面變成 MCP server。</p>
+    <div class="tbl-wrap" style="margin:18px 0">
+      <table>
+        <thead><tr><th>版本</th><th>對 rubydex 的姿勢</th><th>對照組</th><th>可比性</th></tr></thead>
+        <tbody>
+          <tr><td class="cid">V1</td><td class="tech">強迫:「請用 rubydex」 vs 「請用 grep」(prompt 點名工具)</td><td class="num">with / without</td><td class="tech">不同 prompt 格式 + 自己一套 answer key + 無 case-14 → 只能當前身參考,不上同一把尺</td></tr>
+          <tr><td class="cid">V2</td><td class="tech">放工具箱:prompt 模糊、工具全開,<b>載不載 MCP</b> 由環境決定,模型自選用不用</td><td class="num">grep-only / rubydex-available</td><td class="tech">乾淨可比(V2 已修 MCP 污染)</td></tr>
+          <tr><td class="cid">V3</td><td class="tech"><b>選擇器</b>:rubydex 在工具箱 + 策略明寫「先廣 grep、結構引用才用 rubydex 驗證、字串/動態盲區走 grep」 → 模型自己按題型路由</td><td class="num">selector(單一 arm)</td><td class="tech">前作;證明 prompt-selector 不可靠</td></tr>
+          <tr><td class="cid">V4</td><td class="tech"><b>外層 orchestrator</b>:routing 拉出 prompt、做成 MCP server。LLM 只看到一個 <code>find_code(query, hints?)</code>,server 內 rule-based intent classifier 路由 structural→rubydex / string→rg、0 命中退 rg,另加 <code>get_codebase_map</code>(Aider 風格 repomap primer)。不靠模型自律</td><td class="num">orchestrator(單一 arm)</td><td class="tech">本報告主角</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout acc"><span class="lab">本報告的 4 條件</span><p>主表把 <b>V2-grep</b>(純 LLM 基線)、<b>V2-rubydex</b>(光放工具箱)、<b>V3-selector</b>(叫模型自己路由)、<b>V4-orchestrator</b>(外層主動路由)四條件擺一起。前三個沿用 V3 報告的乾淨數據,第四個本輪新跑。<b>機器題 file-recall 自動算;value 題每題同一個 judge 重判 V3sel + V4orch 兩臂</b>(對齊 strictness、附 V3 錨點驗 drift)。V4 是 <b>hybrid</b>:orchestrator 工具 + LLM 仍可自選 raw grep/Read。</p></div>
+  </div>
+</section>
+
+<section id="main">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">02</span><h2>全 15 題主表</h2></div>
+    <p class="sub">上 6 題=可機器計分(數字=<b>file-recall</b>);下 9 題=judge 判讀(<b>ok / part / bad</b>)。每個模型四欄:grep → rubydex → selector → <b>orchestrator</b>(V4)。小字 = V4 的 <code>find_code</code> 呼叫次數。<span class="ktag struct">結構</span>=rubydex 主場、<span class="ktag blind">盲區</span>=答案不在靜態結構。注意計數題(case-4/4A/8)的 orch 欄被 top_k 截斷打崩。</p>
+    <div class="legend">
+      <span><i class="c-good"></i>recall ≥.999 / ok</span>
+      <span><i class="c-part"></i>0.8–.99 / part</span>
+      <span><i class="c-miss2"></i>0.6–.79</span>
+      <span><i class="c-bad"></i>&lt;.6 / bad</span>
+      <span style="margin-left:auto">小字 = rubydex 呼叫次數</span>
+    </div>
+    <div class="tbl-wrap">
+      <table class="hm" id="mainTable">
+        <thead>
+          <tr><th rowspan="2">case</th><th rowspan="2">型</th>
+            <th class="grp" colspan="4">Haiku 4.5</th>
+            <th class="grp" colspan="4">Opus 4.7-low</th>
+            <th class="grp" colspan="4">GPT-5.5</th></tr>
+          <tr>
+            <th class="sub grp">grep</th><th class="sub">rdx</th><th class="sub">sel</th><th class="sub">orch</th>
+            <th class="sub grp">grep</th><th class="sub">rdx</th><th class="sub">sel</th><th class="sub">orch</th>
+            <th class="sub grp">grep</th><th class="sub">rdx</th><th class="sub">sel</th><th class="sub">orch</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p class="note" style="margin-top:14px">讀法:看每組 4 欄由左到右(grep→rubydex→selector→orchestrator)。機器題上 <b>case-1 的 orch 欄是亮點</b>(Haiku/Opus 0.64→1.00,find_constant_references 抓全 delegate 鏈)。但下半 value 的 <b>計數題 case-4/4A/8 的 orch 欄一片紅</b> —— find_code top_k=10 截斷、不回 total,LLM 把 ~100 筆引用報成 33-38 筆。盲區題(case-7/10)orch 跟前三欄同色(無增益)。</p>
+  </div>
+</section>
+
+<section id="detail">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">★</span><h2>逐題詳表:六臂並排,每題一段評語</h2></div>
+    <p class="sub">每題把 <b>V1 兩臂</b>、<b>V2 兩臂</b>、<b>V3 selector</b>、<b>V4 orchestrator</b> 並排,看「正確性」對上「讀檔 / context / 輸出 token / 速度」。V4 看點:定位題上 find_code 取代廣搜、<b>弱模型讀更少更省</b>;但計數題 <b>top_k 截斷讓正確性崩</b>、強模型 context 反增。切換模型看各自數字;點題目展開。</p>
+    <div class="callout warn"><span class="lab">V1 的正確性不上表</span><p>V1 問法較窄(例如 case-1 只問「分類 mobile 的呼叫點」而非「找全所有檔」)、又是另一套 answer key → file-recall 不公平。所以 <b>V1 只列資源指標(context / token / 速度)當前身參考</b>,正確性欄留「—」。嚴謹的正確性比較看 V2↔V3。</p></div>
+    <div class="mtoggle" id="mtoggle">
+      <button data-m="haiku" class="on">Haiku 4.5</button>
+      <button data-m="opus-low">Opus 4.7-low</button>
+      <button data-m="codex-gpt-5.5">GPT-5.5</button>
+    </div>
+    <div id="detailWrap"></div>
+  </div>
+</section>
+
+<section id="helps">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">03</span><h2>V4 題型相依:定位題持平、計數題崩、盲區題無解</h2></div>
+    <p class="sub">9 個 value 題的判讀品質分數(ok=1 / part=.5 / bad=0,滿分 9),四條件並排。最右的 <b>orchestrator</b> 條 <b>三模型全降</b>(Haiku 7.5→5.0、Opus 8.0→6.0、Codex 8.5→5.5)—— 不是 V4 整體變差,而是 9 題裡的 <b>3 道計數窮舉題(case-4/4A/8)</b>被 find_code 的 top_k 截斷打崩,把單一條的分數拖下來。</p>
+    <div class="bars" id="valueBars" style="margin:18px 0 6px"></div>
+    <p class="note">對照 6 機器題平均 file-recall(都是「找哪些檔」,top_k 夠用):Haiku .82→.93→.94→<b>.96</b>、Opus .91→.93→.89→.89、Codex —→—→—→<b>.94</b>。<b>關鍵反差</b>:同樣是 case-4/4A/8,機器題沒崩(算 distinct files、數量少),value 題崩(要報「總共幾筆引用」,~100 筆被截成 33-38)。<b>V4 的好壞分水嶺不是題型本質、是「答案要不要窮舉」</b>。</p>
+    <div class="cols" style="margin-top:24px">
+      <div class="col yes">
+        <h4>✓ V4 持平或更好的題型</h4>
+        <ul>
+          <li><b>找全少量引用 / 定位</b>(case-1 delegate 鏈、case-9 callback、case-11 routes、case-12 types):<code>find_constant_references</code> enrichment 一次抓全,case-1 從 V3 的 0.64 衝到 1.0。引用數在 top_k 內,截斷不影響。</li>
+          <li><b>弱模型還省 context</b>:find_code 取代廣搜 grep → Haiku 6 機器題 ctx 全省 −14%~−50%。</li>
+        </ul>
+      </div>
+      <div class="col no">
+        <h4>✗ V4 崩 / 無解的題型</h4>
+        <ul>
+          <li><b>計數 / 窮舉引用</b>(case-4/4A/8):find_code top_k=10 截斷 + 不回 total + rg 每檔取樣 → LLM 看到 10 筆代表候選以為是全部。value 三模型在這三題幾乎全 bad。<b>V4-β 必修</b>。</li>
+          <li><b>盲區推理</b>(case-7 silent bug):orchestrator 無增益,三模型 9 格仍漏 <code>income_expense</code>;Opus 兩版都把它「解釋成正常」。</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="routing">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">04</span><h2>find_code 取代了 grep:沒人再用 rg</h2></div>
+    <p class="sub">V3 的問題是「叫模型自己挑」—— selector 實際呼叫 rubydex 又稀疏又沒對準題型。V4 把這個決定拿走了:LLM 只有一個 <code>find_code</code> 通道,要搜就只能叫它。下表是每題 <b>find_code 呼叫次數</b>(V4orch arm)—— 對比 V3 selector 的稀疏亂叫,V4 是<b>每題穩定使用</b>。</p>
+    <div class="tbl-wrap">
+      <table class="hm" id="routeTable">
+        <thead><tr><th>case</th><th>型</th><th class="sub">Haiku find_code</th><th class="sub">Opus find_code</th><th class="sub">Codex find_code</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div class="callout" style="margin-top:18px"><span class="lab">find_code 取代了 broad search</span><p>三模型每題都穩定叫 find_code(從 2-3 次到計數題的數十次),而且 <b>沒人再用 grep / rg</b> —— 看 transcript,模型的「繞道」幾乎都是 <code>Read</code> 去確認候選的完整 context,不是繞過 orchestrator 自己廣搜。<b>find_code 確實接管了 broad search 的角色</b>。計數題(case-4/4A/8)find_code 次數特別高(Codex case-1 叫 44 次、case-2 叫 51 次)是模型在反覆換 query 想湊齊被 top_k 截掉的引用 —— 但 top_k 截斷不是換 query 能救的,所以叫再多次也補不回。</p></div>
+    <p>對照 V3:selector 是「拜託模型自己挑、結果結構題不叫盲區題猛叫」。V4 把 routing 從 prompt 搬到 server,<b>routing 行為本身可靠了</b>(intent classifier 穩定路由)。但這只解決了「叫不叫對工具」,沒解決「工具回傳完不完整」—— 後者(top_k 截斷)才是 V4-α 計數題崩的真兇,留給 V4-β。</p>
+  </div>
+</section>
+
+<section id="efficiency">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">05</span><h2>讀檔 / token:弱模型省、強模型反增</h2></div>
+    <p class="sub">6 機器題的 aggregate context token(in+cache+out,K),四條件並排。基線要看清楚:V4 的省是 <b>相對 V3-selector</b>,不是相對純 grep。Haiku 的 orchestrator 條比 selector(最高)明顯矮、跟 rubydex 持平,但仍比純 grep baseline 高(載 MCP+primer 有底稅);Opus 的 orchestrator 條則是全場最長。V4 context 是模型相依的反轉。</p>
+    <div class="bars" id="ctxBars" style="margin:18px 0 6px"></div>
+    <p class="note"><b>弱模型 Haiku 全省</b>:V3sel→V4orch 六題 ctx 全降 —— case-6 340K→172K(−49%)、case-14 223K→112K(−50%)、case-1 611K→436K(−29%)。find_code 把廣搜的探路檔免掉。<b>但強模型 Opus 全增</b>:case-5 81K→212K(+162%)、case-6 76K→179K(+136%)、case-13 182K→405K(+123%)。Opus V3 本來惜字如金(幾乎不主動叫工具、ctx 極低),V4 強制走 find_code(每次帶候選進 context)+ 開頭 get_codebase_map primer → context 反被灌大。<b>呼應 V3 的「MCP 載入稅對 Opus 是淨負擔」</b>:orchestrator 對已經高效的模型不划算。</p>
+  </div>
+</section>
+
+<section id="corrections">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">06</span><h2>勘誤與方法</h2></div>
+    <p class="sub">這輪查證時抓到的問題,寫出來才誠實。</p>
+    <h3>① answer key 修正:case-12 ledger 型別 1 → 4</h3>
+    <p>舊 key 寫 <code>ledger_inferred_types=1</code>。但讀 <code>ledger_factory.rb</code> 的 live code:<code>LedgerFactory#steps</code> 回的是 <code>Success(user_ledger)</code> = <code>build_ledger_by_user(...)</code> 的結果,依「是否換約 × 是否含稅」回 <b>4 種型別</b>(2 UserLedger + 2 Decorator);key 寫的那個 <code>Ledger</code> 只是傳進去的<b>內層參數</b>,從不直接回傳。<b>→ 正解是 4,答 4 的模型是對的</b>;key 已修。</p>
+    <h3>② case-7 確認 key 沒錯:income_expense 真的是 silent bug</h3>
+    <p>有人(模型)說 <code>income_expense</code> 對到 <code>…FixedCharge::Models::IncomeExpense</code> 所以不是 bug。但它存進 Rails polymorphic 關聯,讀 <code>.source</code> 時 Rails 會 constantize <b>頂層</b> <code>IncomeExpense</code>(不存在)→ 仍是 silent bug。namespaced 那個 model 構不到。<b>→ key 正確,是模型判錯</b>。</p>
+    <h3>③ answer key 修正:case-4 / case-4A 「扣 class def」是 bug(2026-05-26 全 key 重驗)</h3>
+    <p>為了把整批 key 釘乾淨,把剩下 7 個沒驗過的 key 對 live code 重驗了一輪。發現 case-4 / case-4A 的計算公式裡有個共同 bug:扣掉了「class def 自身」那一行,但實際上 <code>class Invoice &lt; ApplicationRecord</code> 那行<b>不含 FQN 字面、不在 raw count 內</b>,本來就不該扣。修正後:</p>
+    <ul style="margin:0 0 14px 18px;font-size:14.5px">
+      <li><b>case-4</b>:total <code>101 → 102</code>(+1)。原本答 102/106 的 LLM 其實更接近正解;判讀無變化。</li>
+      <li><b>case-4A</b>:per-class +1,total <code>141 → 145</code>(+4)。Opus/Codex 的純 grep 結果(150/151)從「過報 ~9」變「過報 ~5-6」→ recall-first 下從 <span class="c-part" style="padding:1px 6px;border-radius:4px">part</span> 升到 <span class="c-ok" style="padding:1px 6px;border-radius:4px">ok</span>。**這讓 Codex 的 grep≤rubydex 變成平手(8.0=8.0),不是嚴格 &lt; —— 不過 selector 仍勝**。</li>
+      <li>其他 5 個 key(case-3/8/9/10/11)逐項對 live code,全部 ✅ matches,沒改。</li>
+    </ul>
+    <div class="callout"><span class="lab">方法:為什麼要「per-case 重判」</span><p>第一輪我為了平行,每個模型派一個 judge,結果不同 judge 對同一份 key 套出不同嚴格度(case-10:某 judge 全 bad、另一個全 ok)→ 跨模型分數被污染。改成<b>每題一個 judge 判該題全 9 格</b>後,同題內跨模型/跨條件才真的可比。本報告主表用的是重判後的乾淨資料。</p></div>
+  </div>
+</section>
+
+<section id="verdict">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">07</span><h2>結論</h2></div>
+    <p>① <b>外層 routing 本身可行</b>:rule-based intent classifier + 單一 <code>find_code</code> 工具真的把路由從 prompt 拉出來了 —— 三模型在結構題乖乖走 rubydex、字串題走 rg,不再像 V3 selector 那樣亂挑。case-1(delegate 鏈)從 V3 的 0.64 衝到 1.0 是最好的證據。</p>
+    <p>② <b>但價值強烈題型相依,不是一致的勝利</b>:定位 / 找全少量題持平或更好;<b>計數窮舉題(case-4/4A/8)被 top_k 截斷打崩</b>(value 三模型全降 −2~−3);盲區推理題(case-7)照樣無解。</p>
+    <p>③ <b>效率是模型相依的反轉</b>:弱模型(Haiku)find_code 取代廣搜 → ctx 省 33%、recall 還升;強模型(Opus)本來惜字如金,被 orchestrator + primer 強灌候選 → ctx 反增 120%。<b>orchestrator 對已經高效的模型是淨負擔</b>。</p>
+    <p>④ <b>pure single-channel 不可行</b>:試過 <code>--disallowedTools</code> 拔掉 raw grep/Read 強制只走 find_code,recall 反而更崩(case-2 1.0→0.0、LLM 在部分題直接認輸)。實務上 hybrid(orchestrator + LLM 自選 raw 補強)才是現實 —— V4 是<b>加</b>在工具箱、不是<b>取代</b>。</p>
+    <div class="callout warn"><span class="lab">V4-β go / no-go</span><p><b>值得做,但要先補兩個硬傷。</b>(1) <b>top_k 截斷必修</b>:計數題要讓 <code>find_code</code> 回 <code>total</code> count + 支援 pagination / 不截斷模式,否則窮舉題永遠崩。(2) <b>針對弱模型 + 定位題型</b>:orchestrator 對強模型是負擔,別無差別強推。β 方向(接 ruby-lsp-rails 補 route/association、rails runtime 補 constantize/polymorphic)仍合理,但先把 α 暴露的截斷問題解掉再說。</p></div>
+    <div class="callout"><span class="lab">如何看這些數字</span><p>每格只跑<b>一次(n=1)</b>,單次變異很大。所有結論都是<b>方向性訊號</b>;單題的小差異(尤其 ±1 個 part/ok)別當定論。要可發布的強主張需每格 N 次取中位。</p></div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="anon">
+      <b>方法 & 可重現</b><br>
+      6 機器題有 ground-truth 檔清單(<code>automation/answer_keys_machine/*.files</code>),recall=file-level(對版面免疫)。9 value 題對 <code>results/answer_key/case-*.md</code> 由 per-case 單一 judge 判 ok/part/bad(recall-first:漏報重罰、過報輕罰);V4 每題同 judge 重判 V3sel + V4orch、附 V3 錨點驗 drift。orchestrator = 外層 MCP server(<code>rubydex_orchestrator/</code>,單一 <code>find_code</code> 工具 + rule-based intent classifier),benchmark 用 <code>run_all_orchestrator.sh</code>(Claude <code>--strict-mcp-config</code>、codex <code>--ignore-user-config</code> 隔離);V2/V3 三臂沿用 V3 報告乾淨數據。彙整 <code>v4_compare_aggregate.py</code> / <code>v4_detail_aggregate.py</code>、判讀存 <code>v4_value_cojudge.md</code>。
+    </div>
+    <p>目標為三個生產 Rails 專案(已匿名)。題名與符號為中性化代稱。Rubydex Benchmark V4 · 2026-05-28 · n=1,看方向不看小數點。</p>
+  </div>
+</footer>
+
+<script>
+const D = {"machine":[{"id":"1","label":"has_one + delegate 鏈","kind":"struct","models":{"haiku":{"V2grep":{"recall":0.571,"reads":1,"rdx":0,"ctx":120},"V2rdx":{"recall":0.786,"reads":1,"rdx":1,"ctx":202},"V3sel":{"recall":0.643,"reads":1,"rdx":0,"ctx":611},"V4orch":{"recall":1.0,"ctx":436,"reads":0,"rdx":9}},"opus-low":{"V2grep":{"recall":0.643,"reads":3,"rdx":0,"ctx":142},"V2rdx":{"recall":0.643,"reads":9,"rdx":1,"ctx":433},"V3sel":{"recall":0.643,"reads":7,"rdx":0,"ctx":288},"V4orch":{"recall":1.0,"ctx":238,"reads":0,"rdx":9}},"codex-gpt-5.5":{"V2grep":{"recall":0.643,"reads":17,"rdx":0,"ctx":118},"V2rdx":{"recall":1.0,"reads":22,"rdx":3,"ctx":92},"V3sel":{"recall":0.643,"reads":36,"rdx":4,"ctx":89},"V4orch":{"recall":0.643,"ctx":1645,"reads":49,"rdx":44}}}},{"id":"2","label":"AASM 動態 event","kind":"struct","models":{"haiku":{"V2grep":{"recall":0.833,"reads":0,"rdx":0,"ctx":69},"V2rdx":{"recall":0.917,"reads":5,"rdx":4,"ctx":487},"V3sel":{"recall":1.0,"reads":7,"rdx":0,"ctx":826},"V4orch":{"recall":1.0,"ctx":712,"reads":3,"rdx":9}},"opus-low":{"V2grep":{"recall":0.833,"reads":0,"rdx":0,"ctx":209},"V2rdx":{"recall":0.917,"reads":6,"rdx":3,"ctx":513},"V3sel":{"recall":0.917,"reads":6,"rdx":0,"ctx":414},"V4orch":{"recall":0.833,"ctx":581,"reads":4,"rdx":24}},"codex-gpt-5.5":{"V2grep":{"recall":1.0,"reads":21,"rdx":0,"ctx":95},"V2rdx":{"recall":0.833,"reads":13,"rdx":0,"ctx":152},"V3sel":{"recall":0.917,"reads":13,"rdx":6,"ctx":71},"V4orch":{"recall":1.0,"ctx":1049,"reads":34,"rdx":51}}}},{"id":"5","label":"Sidekiq YAML 字串","kind":"blind","models":{"haiku":{"V2grep":{"recall":1.0,"reads":1,"rdx":0,"ctx":128},"V2rdx":{"recall":1.0,"reads":1,"rdx":3,"ctx":414},"V3sel":{"recall":1.0,"reads":3,"rdx":0,"ctx":385},"V4orch":{"recall":1.0,"ctx":253,"reads":0,"rdx":11}},"opus-low":{"V2grep":{"recall":1.0,"reads":2,"rdx":0,"ctx":63},"V2rdx":{"recall":1.0,"reads":1,"rdx":2,"ctx":119},"V3sel":{"recall":1.0,"reads":2,"rdx":1,"ctx":81},"V4orch":{"recall":1.0,"ctx":212,"reads":2,"rdx":6}},"codex-gpt-5.5":{"V2grep":{"recall":1.0,"reads":2,"rdx":0,"ctx":8},"V2rdx":{"recall":1.0,"reads":3,"rdx":2,"ctx":24},"V3sel":{"recall":1.0,"reads":2,"rdx":3,"ctx":33},"V4orch":{"recall":1.0,"ctx":82,"reads":0,"rdx":12}}}},{"id":"6","label":"Object monkey-patch","kind":"blind","models":{"haiku":{"V2grep":{"recall":1.0,"reads":1,"rdx":0,"ctx":96},"V2rdx":{"recall":1.0,"reads":1,"rdx":2,"ctx":161},"V3sel":{"recall":1.0,"reads":2,"rdx":2,"ctx":340},"V4orch":{"recall":1.0,"ctx":172,"reads":0,"rdx":3}},"opus-low":{"V2grep":{"recall":1.0,"reads":1,"rdx":0,"ctx":48},"V2rdx":{"recall":1.0,"reads":1,"rdx":1,"ctx":58},"V3sel":{"recall":1.0,"reads":1,"rdx":0,"ctx":76},"V4orch":{"recall":1.0,"ctx":179,"reads":1,"rdx":3}},"codex-gpt-5.5":{"V2grep":{"recall":1.0,"reads":2,"rdx":0,"ctx":3},"V2rdx":{"recall":1.0,"reads":2,"rdx":3,"ctx":23},"V3sel":{"recall":1.0,"reads":2,"rdx":6,"ctx":21},"V4orch":{"recall":1.0,"ctx":111,"reads":0,"rdx":13}}}},{"id":"13","label":"Hash dispatch 表","kind":"blind","models":{"haiku":{"V2grep":{"recall":0.5,"reads":4,"rdx":0,"ctx":720},"V2rdx":{"recall":1.0,"reads":7,"rdx":0,"ctx":1272},"V3sel":{"recall":1.0,"reads":8,"rdx":0,"ctx":1231},"V4orch":{"recall":0.75,"ctx":942,"reads":8,"rdx":28}},"opus-low":{"V2grep":{"recall":1.0,"reads":1,"rdx":0,"ctx":71},"V2rdx":{"recall":1.0,"reads":2,"rdx":4,"ctx":289},"V3sel":{"recall":0.75,"reads":5,"rdx":1,"ctx":182},"V4orch":{"recall":0.5,"ctx":405,"reads":3,"rdx":24}},"codex-gpt-5.5":{"V2grep":{"recall":1.0,"reads":14,"rdx":0,"ctx":108},"V2rdx":{"recall":1.0,"reads":13,"rdx":7,"ctx":73},"V3sel":{"recall":1.0,"reads":12,"rdx":4,"ctx":104},"V4orch":{"recall":1.0,"ctx":938,"reads":21,"rdx":34}}}},{"id":"14","label":"rename 影響面","kind":"struct","models":{"haiku":{"V2grep":{"recall":1.0,"reads":17,"rdx":0,"ctx":659},"V2rdx":{"recall":0.882,"reads":0,"rdx":2,"ctx":80},"V3sel":{"recall":1.0,"reads":2,"rdx":2,"ctx":223},"V4orch":{"recall":1.0,"ctx":112,"reads":0,"rdx":2}},"opus-low":{"V2grep":{"recall":1.0,"reads":1,"rdx":0,"ctx":81},"V2rdx":{"recall":1.0,"reads":0,"rdx":2,"ctx":86},"V3sel":{"recall":1.0,"reads":1,"rdx":1,"ctx":96},"V4orch":{"recall":1.0,"ctx":212,"reads":4,"rdx":4}},"codex-gpt-5.5":{"V2grep":{"recall":1.0,"reads":3,"rdx":0,"ctx":83},"V2rdx":{"recall":1.0,"reads":0,"rdx":2,"ctx":44},"V3sel":{"recall":1.0,"reads":4,"rdx":4,"ctx":60},"V4orch":{"recall":1.0,"ctx":472,"reads":35,"rdx":23}}}}],"value":[{"id":"3","label":"class_eval 動態生方法","kind":"blind","models":{"haiku":{"V2grep":{"judge":"part","reads":1,"rdx":0,"ctx":99},"V2rdx":{"judge":"part","reads":1,"rdx":2,"ctx":158},"V3sel":{"judge":"part","reads":1,"rdx":2,"ctx":230},"V4orch":{"judge":"part","ctx":247,"reads":1,"rdx":5}},"opus-low":{"V2grep":{"judge":"part","reads":1,"rdx":0,"ctx":46},"V2rdx":{"judge":"part","reads":1,"rdx":2,"ctx":79},"V3sel":{"judge":"ok","reads":2,"rdx":0,"ctx":78},"V4orch":{"judge":"ok","ctx":150,"reads":1,"rdx":2}},"codex-gpt-5.5":{"V2grep":{"judge":"ok","reads":3,"rdx":0,"ctx":30},"V2rdx":{"judge":"ok","reads":2,"rdx":1,"ctx":25},"V3sel":{"judge":"ok","reads":2,"rdx":5,"ctx":49},"V4orch":{"judge":"ok","ctx":87,"reads":2,"rdx":10}}}},{"id":"4","label":"namespace 給 FQN","kind":"struct","models":{"haiku":{"V2grep":{"judge":"part","reads":3,"rdx":0,"ctx":252},"V2rdx":{"judge":"ok","reads":3,"rdx":1,"ctx":594},"V3sel":{"judge":"ok","reads":3,"rdx":0,"ctx":369},"V4orch":{"judge":"bad","ctx":370,"reads":3,"rdx":12}},"opus-low":{"V2grep":{"judge":"part","reads":1,"rdx":0,"ctx":94},"V2rdx":{"judge":"ok","reads":0,"rdx":1,"ctx":235},"V3sel":{"judge":"ok","reads":2,"rdx":1,"ctx":211},"V4orch":{"judge":"bad","ctx":206,"reads":0,"rdx":3}},"codex-gpt-5.5":{"V2grep":{"judge":"ok","reads":1,"rdx":0,"ctx":42},"V2rdx":{"judge":"ok","reads":1,"rdx":0,"ctx":42},"V3sel":{"judge":"ok","reads":3,"rdx":1,"ctx":64},"V4orch":{"judge":"bad","ctx":85,"reads":0,"rdx":9}}}},{"id":"4A","label":"namespace 不給 FQN","kind":"struct","models":{"haiku":{"V2grep":{"judge":"part","reads":4,"rdx":0,"ctx":947},"V2rdx":{"judge":"ok","reads":0,"rdx":10,"ctx":137},"V3sel":{"judge":"ok","reads":1,"rdx":5,"ctx":441},"V4orch":{"judge":"bad","ctx":262,"reads":0,"rdx":11}},"opus-low":{"V2grep":{"judge":"ok","reads":0,"rdx":0,"ctx":66},"V2rdx":{"judge":"ok","reads":0,"rdx":5,"ctx":133},"V3sel":{"judge":"ok","reads":1,"rdx":4,"ctx":183},"V4orch":{"judge":"ok","ctx":2049,"reads":20,"rdx":23}},"codex-gpt-5.5":{"V2grep":{"judge":"ok","reads":1,"rdx":0,"ctx":95},"V2rdx":{"judge":"ok","reads":0,"rdx":9,"ctx":31},"V3sel":{"judge":"ok","reads":0,"rdx":9,"ctx":67},"V4orch":{"judge":"bad","ctx":591,"reads":16,"rdx":26}}}},{"id":"7","label":"source_type 字串/silent bug","kind":"blind","models":{"haiku":{"V2grep":{"judge":"bad","reads":6,"rdx":0,"ctx":1484},"V2rdx":{"judge":"part","reads":3,"rdx":1,"ctx":1002},"V3sel":{"judge":"part","reads":4,"rdx":0,"ctx":718},"V4orch":{"judge":"part","ctx":1137,"reads":6,"rdx":11}},"opus-low":{"V2grep":{"judge":"bad","reads":2,"rdx":0,"ctx":244},"V2rdx":{"judge":"bad","reads":2,"rdx":3,"ctx":252},"V3sel":{"judge":"bad","reads":3,"rdx":14,"ctx":446},"V4orch":{"judge":"bad","ctx":1112,"reads":10,"rdx":26}},"codex-gpt-5.5":{"V2grep":{"judge":"bad","reads":28,"rdx":0,"ctx":109},"V2rdx":{"judge":"bad","reads":29,"rdx":4,"ctx":109},"V3sel":{"judge":"part","reads":23,"rdx":18,"ctx":226},"V4orch":{"judge":"part","ctx":1583,"reads":38,"rdx":40}}}},{"id":"8","label":"短形式↔FQN 計數","kind":"struct","models":{"haiku":{"V2grep":{"judge":"ok","reads":0,"rdx":0,"ctx":72},"V2rdx":{"judge":"ok","reads":14,"rdx":2,"ctx":392},"V3sel":{"judge":"ok","reads":0,"rdx":0,"ctx":130},"V4orch":{"judge":"part","ctx":37,"reads":0,"rdx":4}},"opus-low":{"V2grep":{"judge":"ok","reads":0,"rdx":0,"ctx":56},"V2rdx":{"judge":"ok","reads":0,"rdx":2,"ctx":85},"V3sel":{"judge":"ok","reads":0,"rdx":1,"ctx":65},"V4orch":{"judge":"bad","ctx":218,"reads":0,"rdx":3}},"codex-gpt-5.5":{"V2grep":{"judge":"ok","reads":0,"rdx":0,"ctx":7},"V2rdx":{"judge":"ok","reads":16,"rdx":2,"ctx":20},"V3sel":{"judge":"ok","reads":16,"rdx":1,"ctx":25},"V4orch":{"judge":"bad","ctx":100,"reads":0,"rdx":15}}}},{"id":"9","label":"callback symbol","kind":"blind","models":{"haiku":{"V2grep":{"judge":"ok","reads":1,"rdx":0,"ctx":264},"V2rdx":{"judge":"part","reads":1,"rdx":6,"ctx":494},"V3sel":{"judge":"ok","reads":2,"rdx":0,"ctx":448},"V4orch":{"judge":"ok","ctx":394,"reads":1,"rdx":7}},"opus-low":{"V2grep":{"judge":"ok","reads":1,"rdx":0,"ctx":96},"V2rdx":{"judge":"ok","reads":1,"rdx":1,"ctx":139},"V3sel":{"judge":"ok","reads":1,"rdx":0,"ctx":105},"V4orch":{"judge":"ok","ctx":331,"reads":1,"rdx":12}},"codex-gpt-5.5":{"V2grep":{"judge":"ok","reads":4,"rdx":0,"ctx":38},"V2rdx":{"judge":"ok","reads":4,"rdx":2,"ctx":99},"V3sel":{"judge":"ok","reads":3,"rdx":3,"ctx":29},"V4orch":{"judge":"ok","ctx":224,"reads":5,"rdx":27}}}},{"id":"10","label":"i18n 動態 key","kind":"blind","models":{"haiku":{"V2grep":{"judge":"part","reads":6,"rdx":0,"ctx":1180},"V2rdx":{"judge":"part","reads":7,"rdx":0,"ctx":1677},"V3sel":{"judge":"part","reads":8,"rdx":0,"ctx":857},"V4orch":{"judge":"part","ctx":1747,"reads":7,"rdx":8}},"opus-low":{"V2grep":{"judge":"ok","reads":0,"rdx":0,"ctx":39},"V2rdx":{"judge":"ok","reads":5,"rdx":0,"ctx":398},"V3sel":{"judge":"ok","reads":4,"rdx":0,"ctx":321},"V4orch":{"judge":"ok","ctx":447,"reads":2,"rdx":7}},"codex-gpt-5.5":{"V2grep":{"judge":"ok","reads":10,"rdx":0,"ctx":94},"V2rdx":{"judge":"ok","reads":19,"rdx":0,"ctx":83},"V3sel":{"judge":"ok","reads":17,"rdx":7,"ctx":174},"V4orch":{"judge":"ok","ctx":593,"reads":16,"rdx":44}}}},{"id":"11","label":"routes helper 反查","kind":"struct","models":{"haiku":{"V2grep":{"judge":"part","reads":3,"rdx":0,"ctx":639},"V2rdx":{"judge":"part","reads":5,"rdx":0,"ctx":595},"V3sel":{"judge":"ok","reads":3,"rdx":0,"ctx":918},"V4orch":{"judge":"ok","ctx":845,"reads":3,"rdx":23}},"opus-low":{"V2grep":{"judge":"ok","reads":2,"rdx":0,"ctx":58},"V2rdx":{"judge":"ok","reads":2,"rdx":2,"ctx":245},"V3sel":{"judge":"ok","reads":2,"rdx":0,"ctx":148},"V4orch":{"judge":"ok","ctx":338,"reads":1,"rdx":8}},"codex-gpt-5.5":{"V2grep":{"judge":"ok","reads":7,"rdx":0,"ctx":73},"V2rdx":{"judge":"ok","reads":7,"rdx":4,"ctx":73},"V3sel":{"judge":"ok","reads":6,"rdx":3,"ctx":94},"V4orch":{"judge":"ok","ctx":386,"reads":19,"rdx":30}}}},{"id":"12","label":"method_missing 轉發","kind":"blind","models":{"haiku":{"V2grep":{"judge":"ok","reads":8,"rdx":0,"ctx":376},"V2rdx":{"judge":"ok","reads":4,"rdx":0,"ctx":380},"V3sel":{"judge":"ok","reads":7,"rdx":0,"ctx":448},"V4orch":{"judge":"ok","ctx":504,"reads":4,"rdx":1}},"opus-low":{"V2grep":{"judge":"ok","reads":4,"rdx":0,"ctx":174},"V2rdx":{"judge":"ok","reads":5,"rdx":6,"ctx":303},"V3sel":{"judge":"ok","reads":5,"rdx":0,"ctx":243},"V4orch":{"judge":"ok","ctx":702,"reads":4,"rdx":10}},"codex-gpt-5.5":{"V2grep":{"judge":"ok","reads":16,"rdx":0,"ctx":93},"V2rdx":{"judge":"ok","reads":12,"rdx":3,"ctx":27},"V3sel":{"judge":"ok","reads":12,"rdx":8,"ctx":86},"V4orch":{"judge":"ok","ctx":303,"reads":23,"rdx":7}}}}]};
+const MODELS=[['haiku','Haiku'],['opus-low','Opus'],['codex-gpt-5.5','GPT-5.5']];
+const CONDS=['V2grep','V2rdx','V3sel','V4orch'];
+
+function recallClass(v){ if(v==null) return 'c-na'; if(v>=0.999) return 'c-good'; if(v>=0.8) return 'c-part'; if(v>=0.6) return 'c-miss2'; return 'c-bad'; }
+function judgeClass(j){ return j==='ok'?'c-ok':j==='part'?'c-part':'c-bad'; }
+
+// ---- main 15-case heatmap ----
+(function(){
+  const tb=document.querySelector('#mainTable tbody');
+  function rowFor(r, isMachine){
+    let html=`<td class="cid">case-${r.id}</td><td><span class="ktag ${r.kind}">${r.kind==='struct'?'結構':'盲區'}</span></td>`;
+    MODELS.forEach(([mk],mi)=>{
+      CONDS.forEach((c,ci)=>{
+        const cell=r.models[mk][c];
+        const gl = ci===0 ? ' gleft':'';
+        const rdx = cell.rdx>0 ? `<span class="d">rdx ${cell.rdx}</span>` : '';
+        if(isMachine){
+          const v=cell.recall;
+          html+=`<td class="cell ${recallClass(v)}${gl}">${v==null?'–':v.toFixed(2)}${rdx}</td>`;
+        }else{
+          html+=`<td class="cell ${judgeClass(cell.judge)}${gl}">${cell.judge}${rdx}</td>`;
+        }
+      });
+    });
+    return html;
+  }
+  // section separators via caption rows
+  const sep=(txt)=>{ const tr=document.createElement('tr'); tr.innerHTML=`<td class="cap" colspan="14" style="background:#f1ece0;font-family:var(--mono);font-size:11px;letter-spacing:.08em;color:var(--muted)">${txt}</td>`; tb.appendChild(tr); };
+  sep('機器計分題(數字 = file-recall)');
+  D.machine.forEach(r=>{ const tr=document.createElement('tr'); tr.innerHTML=rowFor(r,true); tb.appendChild(tr); });
+  sep('判讀題(ok / part / bad)');
+  D.value.forEach(r=>{ const tr=document.createElement('tr'); tr.innerHTML=rowFor(r,false); tb.appendChild(tr); });
+})();
+
+// ---- value quality bars (per model, 3 conditions) ----
+(function(){
+  const wrap=document.getElementById('valueBars');
+  const sc={ok:1,part:0.5,bad:0};
+  const rows=[];
+  MODELS.forEach(([mk,mn])=>{
+    const s={V2grep:0,V2rdx:0,V3sel:0,V4orch:0};
+    D.value.forEach(r=>CONDS.forEach(c=>s[c]+=sc[r.models[mk][c].judge]));
+    [['grep','V2grep','mid'],['+rubydex','V2rdx','mid'],['selector','V3sel','mid'],['orchestrator','V4orch','bad']].forEach(([lbl,key,cls])=>{
+      rows.push({name:`${mn} · ${lbl}`, val:s[key], cls});
+    });
+  });
+  rows.forEach((r,i)=>{
+    const row=document.createElement('div'); row.className='bar-row';
+    row.innerHTML=`<div class="lbl">${r.name}</div><div><div class="track"><div class="fill ${r.cls}" style="width:0">${r.val.toFixed(1)} / 9</div></div></div>`;
+    wrap.appendChild(row);
+    setTimeout(()=>{ row.querySelector('.fill').style.width=(r.val/9*100)+'%'; }, 100+i*60);
+  });
+})();
+
+// ---- machine ctx bars (case-14 + aggregate) ----
+(function(){
+  const wrap=document.getElementById('ctxBars');
+  // aggregate ctx over 6 machine cases per condition, per model
+  const rows=[];
+  MODELS.forEach(([mk,mn])=>{
+    const s={V2grep:0,V2rdx:0,V3sel:0,V4orch:0};
+    D.machine.forEach(r=>CONDS.forEach(c=>s[c]+=(r.models[mk][c].ctx||0)));
+    [['grep','V2grep'],['+rubydex','V2rdx'],['selector','V3sel'],['orchestrator','V4orch']].forEach(([lbl,key])=>{
+      rows.push({name:`${mn} · ${lbl}`, val:s[key], base:s.V2grep});
+    });
+  });
+  const max=Math.max(...rows.map(r=>r.val));
+  rows.forEach((r,i)=>{
+    const cls = r.val<=r.base*0.97?'win':(r.val>r.base*1.05?'bad':'mid');
+    const row=document.createElement('div'); row.className='bar-row';
+    row.innerHTML=`<div class="lbl">${r.name}</div><div><div class="track"><div class="fill ${cls}" style="width:0">${(r.val/1000).toFixed(2)}M</div></div></div>`;
+    wrap.appendChild(row);
+    setTimeout(()=>{ row.querySelector('.fill').style.width=Math.max(8,r.val/max*100)+'%'; }, 100+i*60);
+  });
+})();
+
+// ---- selector routing table (rdx calls per case for V3-selector) ----
+(function(){
+  const tb=document.querySelector('#routeTable tbody');
+  const all=[...D.machine,...D.value];
+  // order: struct first then blind, machine then value within
+  all.forEach(r=>{
+    let html=`<td class="cid">case-${r.id}</td><td><span class="ktag ${r.kind}">${r.kind==='struct'?'結構':'盲區'}</span></td>`;
+    MODELS.forEach(([mk])=>{
+      const n=r.models[mk].V4orch.rdx||0;
+      const cls = r.kind==='struct' ? (n>0?'c-ok':'c-bad') : (n>0?'c-part':'c-good');
+      html+=`<td class="cell ${cls}">${n}</td>`;
+    });
+    const tr=document.createElement('tr'); tr.innerHTML=html; tb.appendChild(tr);
+  });
+})();
+
+// ---- per-case detail (toggle model) ----
+const DET = {"machine":[{"id":"1","label":"has_one + delegate 鏈","kind":"struct","models":{"haiku":{"V1rdx":{"reads":6,"rdx":11,"ctx":1322,"out":6627,"wall":79,"corr":null},"V1grep":{"reads":9,"rdx":0,"ctx":1305,"out":13740,"wall":179,"corr":null},"V2rdx":{"reads":1,"rdx":1,"ctx":202,"out":2202,"wall":22,"corr":{"t":"recall","v":0.786}},"V2grep":{"reads":1,"rdx":0,"ctx":120,"out":6120,"wall":39,"corr":{"t":"recall","v":0.571}},"V3sel":{"reads":1,"rdx":0,"ctx":611,"out":6908,"wall":68,"corr":{"t":"recall","v":0.643}},"V4orch":{"reads":0,"rdx":9,"ctx":436,"out":5135,"wall":52,"corr":{"t":"recall","v":1.0}}},"opus-low":{"V1rdx":{"reads":0,"rdx":6,"ctx":227,"out":2136,"wall":41,"corr":null},"V1grep":{"reads":1,"rdx":0,"ctx":208,"out":4203,"wall":75,"corr":null},"V2rdx":{"reads":9,"rdx":1,"ctx":433,"out":16120,"wall":142,"corr":{"t":"recall","v":0.643}},"V2grep":{"reads":3,"rdx":0,"ctx":142,"out":7784,"wall":74,"corr":{"t":"recall","v":0.643}},"V3sel":{"reads":7,"rdx":0,"ctx":288,"out":13034,"wall":98,"corr":{"t":"recall","v":0.643}},"V4orch":{"reads":0,"rdx":9,"ctx":238,"out":4066,"wall":62,"corr":{"t":"recall","v":1.0}}},"codex-gpt-5.5":{"V1rdx":{"reads":4,"rdx":22,"ctx":41,"out":5569,"wall":113,"corr":null},"V1grep":{"reads":28,"rdx":0,"ctx":94,"out":10619,"wall":189,"corr":null},"V2rdx":{"reads":22,"rdx":3,"ctx":92,"out":6526,"wall":126,"corr":{"t":"recall","v":1.0}},"V2grep":{"reads":17,"rdx":0,"ctx":118,"out":8918,"wall":154,"corr":{"t":"recall","v":0.643}},"V3sel":{"reads":36,"rdx":4,"ctx":89,"out":10436,"wall":185,"corr":{"t":"recall","v":0.643}},"V4orch":{"reads":49,"rdx":44,"ctx":1645,"out":9950,"wall":249,"corr":{"t":"recall","v":0.643}}}}},{"id":"2","label":"AASM 動態 event","kind":"struct","models":{"haiku":{"V1rdx":{"reads":2,"rdx":8,"ctx":938,"out":4631,"wall":5329,"corr":null},"V1grep":{"reads":3,"rdx":0,"ctx":201,"out":3558,"wall":28,"corr":null},"V2rdx":{"reads":5,"rdx":4,"ctx":487,"out":4926,"wall":47,"corr":{"t":"recall","v":0.917}},"V2grep":{"reads":0,"rdx":0,"ctx":69,"out":3476,"wall":126,"corr":{"t":"recall","v":0.833}},"V3sel":{"reads":7,"rdx":0,"ctx":826,"out":7611,"wall":94,"corr":{"t":"recall","v":1.0}},"V4orch":{"reads":3,"rdx":9,"ctx":712,"out":7798,"wall":75,"corr":{"t":"recall","v":1.0}}},"opus-low":{"V1rdx":{"reads":2,"rdx":1,"ctx":300,"out":3344,"wall":153,"corr":null},"V1grep":{"reads":1,"rdx":0,"ctx":95,"out":1770,"wall":31,"corr":null},"V2rdx":{"reads":6,"rdx":3,"ctx":513,"out":11532,"wall":110,"corr":{"t":"recall","v":0.917}},"V2grep":{"reads":0,"rdx":0,"ctx":209,"out":7173,"wall":82,"corr":{"t":"recall","v":0.833}},"V3sel":{"reads":6,"rdx":0,"ctx":414,"out":8046,"wall":78,"corr":{"t":"recall","v":0.917}},"V4orch":{"reads":4,"rdx":24,"ctx":581,"out":6852,"wall":97,"corr":{"t":"recall","v":0.833}}},"codex-gpt-5.5":{"V1rdx":{"reads":1,"rdx":2,"ctx":20,"out":3844,"wall":63,"corr":null},"V1grep":{"reads":1,"rdx":0,"ctx":19,"out":3687,"wall":64,"corr":null},"V2rdx":{"reads":13,"rdx":0,"ctx":152,"out":5351,"wall":107,"corr":{"t":"recall","v":0.833}},"V2grep":{"reads":21,"rdx":0,"ctx":95,"out":7518,"wall":150,"corr":{"t":"recall","v":1.0}},"V3sel":{"reads":13,"rdx":6,"ctx":71,"out":6844,"wall":120,"corr":{"t":"recall","v":0.917}},"V4orch":{"reads":34,"rdx":51,"ctx":1049,"out":9231,"wall":282,"corr":{"t":"recall","v":1.0}}}}},{"id":"5","label":"Sidekiq YAML 字串","kind":"blind","models":{"haiku":{"V1rdx":{"reads":5,"rdx":2,"ctx":481,"out":3299,"wall":34,"corr":null},"V1grep":{"reads":2,"rdx":0,"ctx":330,"out":2453,"wall":24,"corr":null},"V2rdx":{"reads":1,"rdx":3,"ctx":414,"out":2875,"wall":37,"corr":{"t":"recall","v":1.0}},"V2grep":{"reads":1,"rdx":0,"ctx":128,"out":1489,"wall":15,"corr":{"t":"recall","v":1.0}},"V3sel":{"reads":3,"rdx":0,"ctx":385,"out":3718,"wall":35,"corr":{"t":"recall","v":1.0}},"V4orch":{"reads":0,"rdx":11,"ctx":253,"out":3290,"wall":125,"corr":{"t":"recall","v":1.0}}},"opus-low":{"V1rdx":{"reads":0,"rdx":4,"ctx":223,"out":1551,"wall":33,"corr":null},"V1grep":{"reads":0,"rdx":0,"ctx":59,"out":400,"wall":9,"corr":null},"V2rdx":{"reads":1,"rdx":2,"ctx":119,"out":1736,"wall":22,"corr":{"t":"recall","v":1.0}},"V2grep":{"reads":2,"rdx":0,"ctx":63,"out":1293,"wall":21,"corr":{"t":"recall","v":1.0}},"V3sel":{"reads":2,"rdx":1,"ctx":81,"out":2243,"wall":23,"corr":{"t":"recall","v":1.0}},"V4orch":{"reads":2,"rdx":6,"ctx":212,"out":1798,"wall":32,"corr":{"t":"recall","v":1.0}}},"codex-gpt-5.5":{"V1rdx":{"reads":2,"rdx":2,"ctx":13,"out":2544,"wall":50,"corr":null},"V1grep":{"reads":2,"rdx":0,"ctx":35,"out":2268,"wall":39,"corr":null},"V2rdx":{"reads":3,"rdx":2,"ctx":24,"out":1697,"wall":37,"corr":{"t":"recall","v":1.0}},"V2grep":{"reads":2,"rdx":0,"ctx":8,"out":1574,"wall":39,"corr":{"t":"recall","v":1.0}},"V3sel":{"reads":2,"rdx":3,"ctx":33,"out":2338,"wall":6039,"corr":{"t":"recall","v":1.0}},"V4orch":{"reads":0,"rdx":12,"ctx":82,"out":1945,"wall":56,"corr":{"t":"recall","v":1.0}}}}},{"id":"6","label":"Object monkey-patch","kind":"blind","models":{"haiku":{"V1rdx":{"reads":1,"rdx":5,"ctx":517,"out":3644,"wall":43,"corr":null},"V1grep":{"reads":2,"rdx":0,"ctx":225,"out":2508,"wall":23,"corr":null},"V2rdx":{"reads":1,"rdx":2,"ctx":161,"out":1523,"wall":17,"corr":{"t":"recall","v":1.0}},"V2grep":{"reads":1,"rdx":0,"ctx":96,"out":1203,"wall":20,"corr":{"t":"recall","v":1.0}},"V3sel":{"reads":2,"rdx":2,"ctx":340,"out":2928,"wall":34,"corr":{"t":"recall","v":1.0}},"V4orch":{"reads":0,"rdx":3,"ctx":172,"out":1437,"wall":21,"corr":{"t":"recall","v":1.0}}},"opus-low":{"V1rdx":{"reads":2,"rdx":1,"ctx":184,"out":2235,"wall":71,"corr":null},"V1grep":{"reads":1,"rdx":0,"ctx":92,"out":1820,"wall":35,"corr":null},"V2rdx":{"reads":1,"rdx":1,"ctx":58,"out":1751,"wall":24,"corr":{"t":"recall","v":1.0}},"V2grep":{"reads":1,"rdx":0,"ctx":48,"out":1603,"wall":19,"corr":{"t":"recall","v":1.0}},"V3sel":{"reads":1,"rdx":0,"ctx":76,"out":1494,"wall":18,"corr":{"t":"recall","v":1.0}},"V4orch":{"reads":1,"rdx":3,"ctx":179,"out":1442,"wall":27,"corr":{"t":"recall","v":1.0}}},"codex-gpt-5.5":{"V1rdx":{"reads":2,"rdx":3,"ctx":12,"out":1903,"wall":44,"corr":null},"V1grep":{"reads":3,"rdx":0,"ctx":22,"out":2563,"wall":48,"corr":null},"V2rdx":{"reads":2,"rdx":3,"ctx":23,"out":1349,"wall":31,"corr":{"t":"recall","v":1.0}},"V2grep":{"reads":2,"rdx":0,"ctx":3,"out":840,"wall":29,"corr":{"t":"recall","v":1.0}},"V3sel":{"reads":2,"rdx":6,"ctx":21,"out":2008,"wall":48,"corr":{"t":"recall","v":1.0}},"V4orch":{"reads":0,"rdx":13,"ctx":111,"out":1755,"wall":51,"corr":{"t":"recall","v":1.0}}}}},{"id":"13","label":"Hash dispatch 表","kind":"blind","models":{"haiku":{"V1rdx":{"reads":11,"rdx":6,"ctx":1888,"out":8691,"wall":104,"corr":null},"V1grep":{"reads":5,"rdx":0,"ctx":1316,"out":6455,"wall":85,"corr":null},"V2rdx":{"reads":7,"rdx":0,"ctx":1272,"out":7577,"wall":100,"corr":{"t":"recall","v":1.0}},"V2grep":{"reads":4,"rdx":0,"ctx":720,"out":8287,"wall":84,"corr":{"t":"recall","v":0.5}},"V3sel":{"reads":8,"rdx":0,"ctx":1231,"out":7681,"wall":90,"corr":{"t":"recall","v":1.0}},"V4orch":{"reads":8,"rdx":28,"ctx":942,"out":11397,"wall":112,"corr":{"t":"recall","v":0.75}}},"opus-low":{"V1rdx":{"reads":2,"rdx":0,"ctx":191,"out":2464,"wall":70,"corr":null},"V1grep":{"reads":2,"rdx":0,"ctx":281,"out":4566,"wall":81,"corr":null},"V2rdx":{"reads":2,"rdx":4,"ctx":289,"out":6375,"wall":70,"corr":{"t":"recall","v":1.0}},"V2grep":{"reads":1,"rdx":0,"ctx":71,"out":3542,"wall":139,"corr":{"t":"recall","v":1.0}},"V3sel":{"reads":5,"rdx":1,"ctx":182,"out":5271,"wall":46,"corr":{"t":"recall","v":0.75}},"V4orch":{"reads":3,"rdx":24,"ctx":405,"out":4417,"wall":79,"corr":{"t":"recall","v":0.5}}},"codex-gpt-5.5":{"V1rdx":{"reads":8,"rdx":2,"ctx":53,"out":4612,"wall":87,"corr":null},"V1grep":{"reads":11,"rdx":0,"ctx":42,"out":5545,"wall":101,"corr":null},"V2rdx":{"reads":13,"rdx":7,"ctx":73,"out":5687,"wall":105,"corr":{"t":"recall","v":1.0}},"V2grep":{"reads":14,"rdx":0,"ctx":108,"out":9073,"wall":159,"corr":{"t":"recall","v":1.0}},"V3sel":{"reads":12,"rdx":4,"ctx":104,"out":7729,"wall":160,"corr":{"t":"recall","v":1.0}},"V4orch":{"reads":21,"rdx":34,"ctx":938,"out":5913,"wall":170,"corr":{"t":"recall","v":1.0}}}}},{"id":"14","label":"rename 影響面","kind":"struct","models":{"haiku":{"V1rdx":null,"V1grep":null,"V2rdx":{"reads":0,"rdx":2,"ctx":80,"out":1666,"wall":12,"corr":{"t":"recall","v":0.882}},"V2grep":{"reads":17,"rdx":0,"ctx":659,"out":8551,"wall":76,"corr":{"t":"recall","v":1.0}},"V3sel":{"reads":2,"rdx":2,"ctx":223,"out":4889,"wall":42,"corr":{"t":"recall","v":1.0}},"V4orch":{"reads":0,"rdx":2,"ctx":112,"out":4073,"wall":32,"corr":{"t":"recall","v":1.0}}},"opus-low":{"V1rdx":null,"V1grep":null,"V2rdx":{"reads":0,"rdx":2,"ctx":86,"out":4481,"wall":44,"corr":{"t":"recall","v":1.0}},"V2grep":{"reads":1,"rdx":0,"ctx":81,"out":4809,"wall":43,"corr":{"t":"recall","v":1.0}},"V3sel":{"reads":1,"rdx":1,"ctx":96,"out":6016,"wall":50,"corr":{"t":"recall","v":1.0}},"V4orch":{"reads":4,"rdx":4,"ctx":212,"out":4508,"wall":62,"corr":{"t":"recall","v":1.0}}},"codex-gpt-5.5":{"V1rdx":null,"V1grep":null,"V2rdx":{"reads":0,"rdx":2,"ctx":44,"out":3331,"wall":60,"corr":{"t":"recall","v":1.0}},"V2grep":{"reads":3,"rdx":0,"ctx":83,"out":4491,"wall":87,"corr":{"t":"recall","v":1.0}},"V3sel":{"reads":4,"rdx":4,"ctx":60,"out":4260,"wall":86,"corr":{"t":"recall","v":1.0}},"V4orch":{"reads":35,"rdx":23,"ctx":472,"out":6820,"wall":167,"corr":{"t":"recall","v":1.0}}}}}],"value":[{"id":"3","label":"class_eval 動態生方法","kind":"blind","models":{"haiku":{"V1rdx":{"reads":2,"rdx":7,"ctx":645,"out":4349,"wall":88,"corr":null},"V1grep":{"reads":1,"rdx":0,"ctx":154,"out":2445,"wall":20,"corr":null},"V2rdx":{"reads":1,"rdx":2,"ctx":158,"out":1702,"wall":19,"corr":{"t":"judge","v":"part"}},"V2grep":{"reads":1,"rdx":0,"ctx":99,"out":1477,"wall":20,"corr":{"t":"judge","v":"part"}},"V3sel":{"reads":1,"rdx":2,"ctx":230,"out":3859,"wall":37,"corr":{"t":"judge","v":"part"}},"V4orch":{"reads":1,"rdx":5,"ctx":247,"out":2650,"wall":28,"corr":{"t":"judge","v":"part"}}},"opus-low":{"V1rdx":{"reads":2,"rdx":2,"ctx":187,"out":1616,"wall":132,"corr":null},"V1grep":{"reads":1,"rdx":0,"ctx":60,"out":928,"wall":17,"corr":null},"V2rdx":{"reads":1,"rdx":2,"ctx":79,"out":1417,"wall":20,"corr":{"t":"judge","v":"part"}},"V2grep":{"reads":1,"rdx":0,"ctx":46,"out":1367,"wall":21,"corr":{"t":"judge","v":"part"}},"V3sel":{"reads":2,"rdx":0,"ctx":78,"out":2355,"wall":28,"corr":{"t":"judge","v":"ok"}},"V4orch":{"reads":1,"rdx":2,"ctx":150,"out":1732,"wall":30,"corr":{"t":"judge","v":"ok"}}},"codex-gpt-5.5":{"V1rdx":{"reads":1,"rdx":3,"ctx":27,"out":2679,"wall":48,"corr":null},"V1grep":{"reads":1,"rdx":0,"ctx":15,"out":2058,"wall":36,"corr":null},"V2rdx":{"reads":2,"rdx":1,"ctx":25,"out":1801,"wall":38,"corr":{"t":"judge","v":"ok"}},"V2grep":{"reads":3,"rdx":0,"ctx":30,"out":2245,"wall":45,"corr":{"t":"judge","v":"ok"}},"V3sel":{"reads":2,"rdx":5,"ctx":49,"out":4140,"wall":75,"corr":{"t":"judge","v":"ok"}},"V4orch":{"reads":2,"rdx":10,"ctx":87,"out":2447,"wall":58,"corr":{"t":"judge","v":"ok"}}}}},{"id":"4","label":"namespace 給 FQN","kind":"struct","models":{"haiku":{"V1rdx":{"reads":8,"rdx":1,"ctx":878,"out":16223,"wall":129,"corr":null},"V1grep":{"reads":5,"rdx":0,"ctx":623,"out":7324,"wall":72,"corr":null},"V2rdx":{"reads":3,"rdx":1,"ctx":594,"out":21615,"wall":165,"corr":{"t":"judge","v":"ok"}},"V2grep":{"reads":3,"rdx":0,"ctx":252,"out":11942,"wall":96,"corr":{"t":"judge","v":"part"}},"V3sel":{"reads":3,"rdx":0,"ctx":369,"out":11037,"wall":78,"corr":{"t":"judge","v":"ok"}},"V4orch":{"reads":3,"rdx":12,"ctx":370,"out":6156,"wall":182,"corr":{"t":"judge","v":"bad"}}},"opus-low":{"V1rdx":{"reads":0,"rdx":1,"ctx":137,"out":3439,"wall":50,"corr":null},"V1grep":{"reads":0,"rdx":0,"ctx":121,"out":6206,"wall":92,"corr":null},"V2rdx":{"reads":0,"rdx":1,"ctx":235,"out":11394,"wall":94,"corr":{"t":"judge","v":"ok"}},"V2grep":{"reads":1,"rdx":0,"ctx":94,"out":7148,"wall":55,"corr":{"t":"judge","v":"part"}},"V3sel":{"reads":2,"rdx":1,"ctx":211,"out":10705,"wall":82,"corr":{"t":"judge","v":"ok"}},"V4orch":{"reads":0,"rdx":3,"ctx":206,"out":6849,"wall":81,"corr":{"t":"judge","v":"bad"}}},"codex-gpt-5.5":{"V1rdx":{"reads":3,"rdx":2,"ctx":39,"out":7511,"wall":121,"corr":null},"V1grep":{"reads":0,"rdx":0,"ctx":27,"out":5949,"wall":103,"corr":null},"V2rdx":{"reads":1,"rdx":0,"ctx":42,"out":5545,"wall":95,"corr":{"t":"judge","v":"ok"}},"V2grep":{"reads":1,"rdx":0,"ctx":42,"out":5257,"wall":95,"corr":{"t":"judge","v":"ok"}},"V3sel":{"reads":3,"rdx":1,"ctx":64,"out":7216,"wall":126,"corr":{"t":"judge","v":"ok"}},"V4orch":{"reads":0,"rdx":9,"ctx":85,"out":3497,"wall":81,"corr":{"t":"judge","v":"bad"}}}}},{"id":"4A","label":"namespace 不給 FQN","kind":"struct","models":{"haiku":{"V1rdx":{"reads":0,"rdx":5,"ctx":168,"out":2314,"wall":19,"corr":null},"V1grep":{"reads":4,"rdx":0,"ctx":1183,"out":13968,"wall":108,"corr":null},"V2rdx":{"reads":0,"rdx":10,"ctx":137,"out":2375,"wall":21,"corr":{"t":"judge","v":"ok"}},"V2grep":{"reads":4,"rdx":0,"ctx":947,"out":11871,"wall":95,"corr":{"t":"judge","v":"part"}},"V3sel":{"reads":1,"rdx":5,"ctx":441,"out":12154,"wall":72,"corr":{"t":"judge","v":"ok"}},"V4orch":{"reads":0,"rdx":11,"ctx":262,"out":10832,"wall":71,"corr":{"t":"judge","v":"bad"}}},"opus-low":{"V1rdx":{"reads":0,"rdx":5,"ctx":141,"out":1836,"wall":28,"corr":null},"V1grep":{"reads":0,"rdx":0,"ctx":288,"out":9107,"wall":113,"corr":null},"V2rdx":{"reads":0,"rdx":5,"ctx":133,"out":3757,"wall":38,"corr":{"t":"judge","v":"ok"}},"V2grep":{"reads":0,"rdx":0,"ctx":66,"out":3619,"wall":86,"corr":{"t":"judge","v":"ok"}},"V3sel":{"reads":1,"rdx":4,"ctx":183,"out":7025,"wall":55,"corr":{"t":"judge","v":"ok"}},"V4orch":{"reads":20,"rdx":23,"ctx":2049,"out":40099,"wall":520,"corr":{"t":"judge","v":"ok"}}},"codex-gpt-5.5":{"V1rdx":{"reads":0,"rdx":5,"ctx":57,"out":5840,"wall":94,"corr":null},"V1grep":{"reads":4,"rdx":0,"ctx":57,"out":6535,"wall":104,"corr":null},"V2rdx":{"reads":0,"rdx":9,"ctx":31,"out":2748,"wall":55,"corr":{"t":"judge","v":"ok"}},"V2grep":{"reads":1,"rdx":0,"ctx":95,"out":10302,"wall":199,"corr":{"t":"judge","v":"ok"}},"V3sel":{"reads":0,"rdx":9,"ctx":67,"out":11096,"wall":211,"corr":{"t":"judge","v":"ok"}},"V4orch":{"reads":16,"rdx":26,"ctx":591,"out":10034,"wall":216,"corr":{"t":"judge","v":"bad"}}}}},{"id":"7","label":"source_type 字串/silent bug","kind":"blind","models":{"haiku":{"V1rdx":{"reads":4,"rdx":8,"ctx":1063,"out":9128,"wall":216,"corr":null},"V1grep":{"reads":5,"rdx":0,"ctx":1053,"out":10740,"wall":106,"corr":null},"V2rdx":{"reads":3,"rdx":1,"ctx":1002,"out":11552,"wall":112,"corr":{"t":"judge","v":"part"}},"V2grep":{"reads":6,"rdx":0,"ctx":1484,"out":12543,"wall":134,"corr":{"t":"judge","v":"bad"}},"V3sel":{"reads":4,"rdx":0,"ctx":718,"out":7535,"wall":70,"corr":{"t":"judge","v":"part"}},"V4orch":{"reads":6,"rdx":11,"ctx":1137,"out":6870,"wall":106,"corr":{"t":"judge","v":"part"}}},"opus-low":{"V1rdx":{"reads":2,"rdx":4,"ctx":773,"out":7605,"wall":134,"corr":null},"V1grep":{"reads":3,"rdx":0,"ctx":269,"out":8369,"wall":134,"corr":null},"V2rdx":{"reads":2,"rdx":3,"ctx":252,"out":6575,"wall":229,"corr":{"t":"judge","v":"bad"}},"V2grep":{"reads":2,"rdx":0,"ctx":244,"out":10130,"wall":624,"corr":{"t":"judge","v":"bad"}},"V3sel":{"reads":3,"rdx":14,"ctx":446,"out":17025,"wall":140,"corr":{"t":"judge","v":"bad"}},"V4orch":{"reads":10,"rdx":26,"ctx":1112,"out":13593,"wall":199,"corr":{"t":"judge","v":"bad"}}},"codex-gpt-5.5":{"V1rdx":{"reads":14,"rdx":7,"ctx":97,"out":7087,"wall":132,"corr":null},"V1grep":{"reads":27,"rdx":0,"ctx":122,"out":10209,"wall":169,"corr":null},"V2rdx":{"reads":29,"rdx":4,"ctx":109,"out":8073,"wall":156,"corr":{"t":"judge","v":"bad"}},"V2grep":{"reads":28,"rdx":0,"ctx":109,"out":8053,"wall":151,"corr":{"t":"judge","v":"bad"}},"V3sel":{"reads":23,"rdx":18,"ctx":226,"out":11378,"wall":2678,"corr":{"t":"judge","v":"part"}},"V4orch":{"reads":38,"rdx":40,"ctx":1583,"out":9888,"wall":291,"corr":{"t":"judge","v":"part"}}}}},{"id":"8","label":"短形式↔FQN 計數","kind":"struct","models":{"haiku":{"V1rdx":{"reads":17,"rdx":1,"ctx":1131,"out":9615,"wall":135,"corr":null},"V1grep":{"reads":1,"rdx":0,"ctx":168,"out":6728,"wall":39,"corr":null},"V2rdx":{"reads":14,"rdx":2,"ctx":392,"out":6171,"wall":134,"corr":{"t":"judge","v":"ok"}},"V2grep":{"reads":0,"rdx":0,"ctx":72,"out":5936,"wall":33,"corr":{"t":"judge","v":"ok"}},"V3sel":{"reads":0,"rdx":0,"ctx":130,"out":4445,"wall":31,"corr":{"t":"judge","v":"ok"}},"V4orch":{"reads":0,"rdx":4,"ctx":37,"out":496,"wall":423,"corr":{"t":"judge","v":"part"}}},"opus-low":{"V1rdx":{"reads":2,"rdx":1,"ctx":304,"out":4707,"wall":95,"corr":null},"V1grep":{"reads":0,"rdx":0,"ctx":65,"out":2131,"wall":24,"corr":null},"V2rdx":{"reads":0,"rdx":2,"ctx":85,"out":4210,"wall":34,"corr":{"t":"judge","v":"ok"}},"V2grep":{"reads":0,"rdx":0,"ctx":56,"out":3114,"wall":116,"corr":{"t":"judge","v":"ok"}},"V3sel":{"reads":0,"rdx":1,"ctx":65,"out":2939,"wall":24,"corr":{"t":"judge","v":"ok"}},"V4orch":{"reads":0,"rdx":3,"ctx":218,"out":3077,"wall":45,"corr":{"t":"judge","v":"bad"}}},"codex-gpt-5.5":{"V1rdx":{"reads":18,"rdx":2,"ctx":30,"out":5801,"wall":104,"corr":null},"V1grep":{"reads":17,"rdx":0,"ctx":26,"out":3311,"wall":62,"corr":null},"V2rdx":{"reads":16,"rdx":2,"ctx":20,"out":3164,"wall":55,"corr":{"t":"judge","v":"ok"}},"V2grep":{"reads":0,"rdx":0,"ctx":7,"out":2260,"wall":47,"corr":{"t":"judge","v":"ok"}},"V3sel":{"reads":16,"rdx":1,"ctx":25,"out":4937,"wall":98,"corr":{"t":"judge","v":"ok"}},"V4orch":{"reads":0,"rdx":15,"ctx":100,"out":2676,"wall":63,"corr":{"t":"judge","v":"bad"}}}}},{"id":"9","label":"callback symbol","kind":"blind","models":{"haiku":{"V1rdx":{"reads":1,"rdx":6,"ctx":421,"out":3240,"wall":35,"corr":null},"V1grep":{"reads":1,"rdx":0,"ctx":244,"out":2896,"wall":24,"corr":null},"V2rdx":{"reads":1,"rdx":6,"ctx":494,"out":3946,"wall":48,"corr":{"t":"judge","v":"part"}},"V2grep":{"reads":1,"rdx":0,"ctx":264,"out":2741,"wall":30,"corr":{"t":"judge","v":"ok"}},"V3sel":{"reads":2,"rdx":0,"ctx":448,"out":3169,"wall":37,"corr":{"t":"judge","v":"ok"}},"V4orch":{"reads":1,"rdx":7,"ctx":394,"out":3860,"wall":115,"corr":{"t":"judge","v":"ok"}}},"opus-low":{"V1rdx":{"reads":1,"rdx":0,"ctx":41,"out":331,"wall":217,"corr":null},"V1grep":{"reads":1,"rdx":0,"ctx":108,"out":923,"wall":16,"corr":null},"V2rdx":{"reads":1,"rdx":1,"ctx":139,"out":2423,"wall":57,"corr":{"t":"judge","v":"ok"}},"V2grep":{"reads":1,"rdx":0,"ctx":96,"out":2359,"wall":28,"corr":{"t":"judge","v":"ok"}},"V3sel":{"reads":1,"rdx":0,"ctx":105,"out":3416,"wall":35,"corr":{"t":"judge","v":"ok"}},"V4orch":{"reads":1,"rdx":12,"ctx":331,"out":4284,"wall":76,"corr":{"t":"judge","v":"ok"}}},"codex-gpt-5.5":{"V1rdx":{"reads":1,"rdx":2,"ctx":22,"out":1314,"wall":30,"corr":null},"V1grep":{"reads":1,"rdx":0,"ctx":22,"out":2369,"wall":76,"corr":null},"V2rdx":{"reads":4,"rdx":2,"ctx":99,"out":4876,"wall":1829,"corr":{"t":"judge","v":"ok"}},"V2grep":{"reads":4,"rdx":0,"ctx":38,"out":4668,"wall":89,"corr":{"t":"judge","v":"ok"}},"V3sel":{"reads":3,"rdx":3,"ctx":29,"out":4173,"wall":74,"corr":{"t":"judge","v":"ok"}},"V4orch":{"reads":5,"rdx":27,"ctx":224,"out":4057,"wall":114,"corr":{"t":"judge","v":"ok"}}}}},{"id":"10","label":"i18n 動態 key","kind":"blind","models":{"haiku":{"V1rdx":{"reads":6,"rdx":0,"ctx":717,"out":5993,"wall":54,"corr":null},"V1grep":{"reads":7,"rdx":0,"ctx":606,"out":6169,"wall":51,"corr":null},"V2rdx":{"reads":7,"rdx":0,"ctx":1677,"out":7686,"wall":107,"corr":{"t":"judge","v":"part"}},"V2grep":{"reads":6,"rdx":0,"ctx":1180,"out":10149,"wall":118,"corr":{"t":"judge","v":"part"}},"V3sel":{"reads":8,"rdx":0,"ctx":857,"out":8464,"wall":72,"corr":{"t":"judge","v":"part"}},"V4orch":{"reads":7,"rdx":8,"ctx":1747,"out":16978,"wall":166,"corr":{"t":"judge","v":"part"}}},"opus-low":{"V1rdx":{"reads":1,"rdx":1,"ctx":38,"out":37,"wall":2,"corr":null},"V1grep":{"reads":1,"rdx":0,"ctx":91,"out":1389,"wall":23,"corr":null},"V2rdx":{"reads":5,"rdx":0,"ctx":398,"out":13513,"wall":141,"corr":{"t":"judge","v":"ok"}},"V2grep":{"reads":0,"rdx":0,"ctx":39,"out":3026,"wall":114,"corr":{"t":"judge","v":"ok"}},"V3sel":{"reads":4,"rdx":0,"ctx":321,"out":10858,"wall":101,"corr":{"t":"judge","v":"ok"}},"V4orch":{"reads":2,"rdx":7,"ctx":447,"out":6491,"wall":103,"corr":{"t":"judge","v":"ok"}}},"codex-gpt-5.5":{"V1rdx":{"reads":11,"rdx":7,"ctx":70,"out":10134,"wall":172,"corr":null},"V1grep":{"reads":7,"rdx":0,"ctx":54,"out":5180,"wall":93,"corr":null},"V2rdx":{"reads":19,"rdx":0,"ctx":83,"out":7437,"wall":145,"corr":{"t":"judge","v":"ok"}},"V2grep":{"reads":10,"rdx":0,"ctx":94,"out":7203,"wall":124,"corr":{"t":"judge","v":"ok"}},"V3sel":{"reads":17,"rdx":7,"ctx":174,"out":8173,"wall":173,"corr":{"t":"judge","v":"ok"}},"V4orch":{"reads":16,"rdx":44,"ctx":593,"out":8131,"wall":226,"corr":{"t":"judge","v":"ok"}}}}},{"id":"11","label":"routes helper 反查","kind":"struct","models":{"haiku":{"V1rdx":{"reads":5,"rdx":1,"ctx":658,"out":5550,"wall":58,"corr":null},"V1grep":{"reads":2,"rdx":0,"ctx":227,"out":3393,"wall":27,"corr":null},"V2rdx":{"reads":5,"rdx":0,"ctx":595,"out":6468,"wall":64,"corr":{"t":"judge","v":"part"}},"V2grep":{"reads":3,"rdx":0,"ctx":639,"out":6050,"wall":67,"corr":{"t":"judge","v":"part"}},"V3sel":{"reads":3,"rdx":0,"ctx":918,"out":7045,"wall":69,"corr":{"t":"judge","v":"ok"}},"V4orch":{"reads":3,"rdx":23,"ctx":845,"out":9195,"wall":88,"corr":{"t":"judge","v":"ok"}}},"opus-low":{"V1rdx":{"reads":1,"rdx":0,"ctx":334,"out":3004,"wall":160,"corr":null},"V1grep":{"reads":1,"rdx":0,"ctx":220,"out":2255,"wall":42,"corr":null},"V2rdx":{"reads":2,"rdx":2,"ctx":245,"out":4930,"wall":60,"corr":{"t":"judge","v":"ok"}},"V2grep":{"reads":2,"rdx":0,"ctx":58,"out":3017,"wall":100,"corr":{"t":"judge","v":"ok"}},"V3sel":{"reads":2,"rdx":0,"ctx":148,"out":4284,"wall":41,"corr":{"t":"judge","v":"ok"}},"V4orch":{"reads":1,"rdx":8,"ctx":338,"out":3560,"wall":69,"corr":{"t":"judge","v":"ok"}}},"codex-gpt-5.5":{"V1rdx":{"reads":4,"rdx":3,"ctx":18,"out":2705,"wall":48,"corr":null},"V1grep":{"reads":3,"rdx":0,"ctx":31,"out":3643,"wall":66,"corr":null},"V2rdx":{"reads":7,"rdx":4,"ctx":73,"out":6317,"wall":119,"corr":{"t":"judge","v":"ok"}},"V2grep":{"reads":7,"rdx":0,"ctx":73,"out":5256,"wall":102,"corr":{"t":"judge","v":"ok"}},"V3sel":{"reads":6,"rdx":3,"ctx":94,"out":7418,"wall":143,"corr":{"t":"judge","v":"ok"}},"V4orch":{"reads":19,"rdx":30,"ctx":386,"out":6195,"wall":144,"corr":{"t":"judge","v":"ok"}}}}},{"id":"12","label":"method_missing 轉發","kind":"blind","models":{"haiku":{"V1rdx":{"reads":7,"rdx":5,"ctx":601,"out":5041,"wall":77,"corr":null},"V1grep":{"reads":10,"rdx":0,"ctx":1084,"out":6266,"wall":65,"corr":null},"V2rdx":{"reads":4,"rdx":0,"ctx":380,"out":3223,"wall":40,"corr":{"t":"judge","v":"ok"}},"V2grep":{"reads":8,"rdx":0,"ctx":376,"out":4824,"wall":52,"corr":{"t":"judge","v":"ok"}},"V3sel":{"reads":7,"rdx":0,"ctx":448,"out":5107,"wall":46,"corr":{"t":"judge","v":"part"}},"V4orch":{"reads":4,"rdx":1,"ctx":504,"out":5686,"wall":56,"corr":{"t":"judge","v":"ok"}}},"opus-low":{"V1rdx":{"reads":1,"rdx":7,"ctx":448,"out":3242,"wall":61,"corr":null},"V1grep":{"reads":4,"rdx":0,"ctx":296,"out":2905,"wall":61,"corr":null},"V2rdx":{"reads":5,"rdx":6,"ctx":303,"out":3295,"wall":42,"corr":{"t":"judge","v":"ok"}},"V2grep":{"reads":4,"rdx":0,"ctx":174,"out":2793,"wall":38,"corr":{"t":"judge","v":"ok"}},"V3sel":{"reads":5,"rdx":0,"ctx":243,"out":4041,"wall":44,"corr":{"t":"judge","v":"ok"}},"V4orch":{"reads":4,"rdx":10,"ctx":702,"out":4176,"wall":106,"corr":{"t":"judge","v":"ok"}}},"codex-gpt-5.5":{"V1rdx":{"reads":11,"rdx":7,"ctx":30,"out":3206,"wall":69,"corr":null},"V1grep":{"reads":11,"rdx":0,"ctx":34,"out":2978,"wall":60,"corr":null},"V2rdx":{"reads":12,"rdx":3,"ctx":27,"out":3322,"wall":83,"corr":{"t":"judge","v":"ok"}},"V2grep":{"reads":16,"rdx":0,"ctx":93,"out":4115,"wall":1402,"corr":{"t":"judge","v":"ok"}},"V3sel":{"reads":12,"rdx":8,"ctx":86,"out":5291,"wall":99,"corr":{"t":"judge","v":"ok"}},"V4orch":{"reads":23,"rdx":7,"ctx":303,"out":4895,"wall":117,"corr":{"t":"judge","v":"ok"}}}}}]};
+const ARMROWS=[
+  ['V1rdx','V1 · 強迫 rubydex','v1'],['V1grep','V1 · 強迫 grep','v1'],
+  ['V2rdx','V2 · rubydex 可用',''],['V2grep','V2 · 純 grep',''],
+  ['V3sel','V3 · selector','sel'],['V4orch','V4 · orchestrator','orch']];
+const NOTES={
+ '1':{tag:'neu',lab:'混合·警示',note:'結構題,但也是「不能無腦信 index」的警示。純 grep 漏很多(Haiku 0.57);把 rubydex 放工具箱(V2-rubydex)反而把 recall 救到 0.79。可是 <b>V3-selector 太信任 rubydex、跳過廣 grep、只讀 1 個檔 → recall 掉回 0.64</b>。正向訊號要這樣讀:rubydex「可用」幫了 recall,但「叫模型自己路由」若省掉那次廣 grep 就會反傷。<b>【V4】orchestrator 把 Haiku/Opus 衝到 1.0</b> —— find_constant_references enrichment 一次抓全 delegate 鏈引用,正是 V3 selector 漏掉的那些。V4 最大亮點。'},
+ '2':{tag:'pos',lab:'rubydex 正向',note:'乾淨正向。Haiku:grep 0.83 → rubydex 0.92 → selector 1.0,而且 selector 讀檔(7)比純 grep(18)<b>還少</b>。同樣找全、甚至更全,卻讀更少 —— 這就是想要的方向。'},
+ '5':{tag:'neg',lab:'盲區·純付稅',note:'rubydex 盲區(Sidekiq 在 YAML / 字串裡引用 class)。三臂 recall 都 1.0,但 context 越加 rubydex 越貴(Haiku grep 128K → rubydex 414K)。<b>正確性沒差、成本反增 = 這題不該開 rubydex</b>。'},
+ '6':{tag:'neg',lab:'盲區·純付稅',note:'同盲區。monkey-patch 一行 grep 就中,recall 全 1.0;開 rubydex 只是多付載入稅(Haiku grep 96K → selector 340K)。grep 完勝。'},
+ '13':{tag:'neu',lab:'盲區·雜訊大',note:'動態 hash dispatch,rubydex 看不到分派關係。Haiku 純 grep 漏一半(0.5)、rubydex 補到 1.0 但 context 爆(720K→1272K);Opus 反而 grep 1.0、selector 掉到 0.75。<b>結果雜、變異大 —— 盲區題 rubydex 不穩</b>。<b>【V4】三模型分裂</b>:Haiku .75 / Opus .5 / Codex 1.0,動態 hash dispatch 在 V4 一樣不穩。'},
+ '14':{tag:'pos',lab:'★ 旗艦正向',note:'最能看出價值的一題。看 Haiku:純 grep 為了找全讀 <b>17 檔 / 659K / 76 秒</b>;V3-selector 用 <code>find_constant_references</code> 一次拿到影響集,只讀 <b>2 檔 / 223K / 42 秒</b>,recall 一樣 1.0。<b>同樣 100% 找全,讀檔 1/8、context 1/3、速度快一倍</b>。(注意 V2-rubydex 0.88:它太省、讀 0 檔反而漏一個 → 要嘛廣 grep、要嘛 rubydex 拿全,不能半套。)<b>【V4】維持 1.0</b>,跟 V3sel 同樣漂亮 —— rename 影響面引用數在 top_k 內,enrichment 抓全不受截斷影響。'},
+ '3':{tag:'neu',lab:'模型細節題',note:'class_eval 動態生 6 個方法。多數臂卡 part(抓到方法與動態機制,但沒釘到精確的定義行 18);Codex 三臂都 ok。rubydex 幫助有限。'},
+ '4':{tag:'pos',lab:'rubydex 正向',note:'namespace 給 FQN 的計數題。純 grep 會漏短形式(part);rubydex / selector 把「短形式↔FQN」數字釘準 → ok。結構計數題,rubydex 正向。<b>【V4】崩</b>:find_code top_k=10 只回代表候選、不回 total,計數從 ~102 報成 33-38,三模型全 bad。窮舉題是 V4-α 的硬傷。'},
+ '4A':{tag:'pos',lab:'★ 三贏',note:'最乾淨的 rubydex 正向。純 grep 多算/漏算(part),rubydex 用 <code>find_constant_references</code> 釘準(ok)。看 <b>Codex 連資源都贏</b>:純 grep 199 秒 / 1 萬 output token,rubydex 55 秒 / 2.7k —— <b>更準、更快、更省,三贏</b>。<b>【V4】反轉成崩</b>:top_k 截斷,Haiku/Codex 大漏(total 145→71/77),僅 Opus 自覺逐檔 Read 補回 ok。'},
+ '7':{tag:'neg',lab:'誰都救不了',note:'polymorphic source_type silent bug。<b>三模型 9 格幾乎全摃龜</b> —— 都把 <code>income_expense</code> 當「對到真 model」,沒看穿 Rails 會 constantize 不存在的頂層常數。Opus 最慘(全 bad,太會講道理)。推理盲點,任何工具都救不了。<b>【V4】仍全摃龜</b>,orchestrator 對 silent bug 推理零增益,Opus 兩版照樣把 income_expense 解釋成正常。'},
+ '8':{tag:'neu',lab:'中性·都對',note:'短形式↔FQN 計數,三臂全 ok(都答對 total 25)。rubydex 中性、無傷。<b>【V4】崩</b>:total 25 被 top_k 截成 15,Opus/Codex bad、Haiku part(recall 殘 + 短形式分類亂)。又一道窮舉題受害。'},
+ '9':{tag:'neu',lab:'中性',note:'callback symbol,大致全 ok。Haiku 的 V2-rubydex 偶爾把 spec metadata 當呼叫(part),屬雜訊。rubydex 中性。'},
+ '10':{tag:'neu',lab:'盲區·無幫助',note:'i18n 動態 key 是字串、rubydex 盲區。Haiku 三臂都 part(漏掉 slim 檔裡的動態 <code>#{}</code> 參照);Opus/Codex ok。rubydex 幫不上。'},
+ '11':{tag:'pos',lab:'selector 略幫',note:'routes helper 反查 controller#action。Haiku 純 grep / rubydex 都 part(callers 過報),selector 收斂到對的 3 個 → ok;Opus/Codex 全 ok。結構反查題,selector 略有幫助。'},
+ '12':{tag:'neu',lab:'中性(已修 key)',note:'method_missing 轉發。修正 answer key 後(型別是 4 不是 1)大多 ok。Haiku 的 selector 把 own 方法數多算(part)。rubydex 中性。'},
+};
+function corrCell(c, isV1){
+  if(isV1 || !c || c.v==null) return '<td class="corr" style="color:var(--muted);background:transparent" title="V1 問法不同,僅列資源">—</td>';
+  if(c.t==='recall'){ const v=c.v; const cls=v>=0.999?'c-good':v>=0.8?'c-part':v>=0.6?'c-miss2':'c-bad'; return `<td><span class="corr ${cls}">${v.toFixed(2)}</span></td>`; }
+  const cls=c.v==='ok'?'c-ok':c.v==='part'?'c-part':'c-bad'; return `<td><span class="corr ${cls}">${c.v}</span></td>`;
+}
+function renderDetail(model){
+  const wrap=document.getElementById('detailWrap'); wrap.innerHTML='';
+  const all=[...DET.machine,...DET.value];
+  all.forEach((r,idx)=>{
+    const n=NOTES[r.id]||{tag:'neu',lab:'',note:''};
+    const isMachine = DET.machine.includes(r);
+    let rows='';
+    ARMROWS.forEach(([key,lbl,cls])=>{
+      const a=r.models[model][key];
+      if(a===null){ rows+=`<tr class="${cls}"><td class="arm">${lbl}</td><td colspan="6" style="text-align:left;color:var(--muted)">(V1 無此題)</td></tr>`; return; }
+      const isV1=cls==='v1';
+      rows+=`<tr class="${cls}"><td class="arm">${lbl}</td>${corrCell(a.corr,isV1)}`+
+            `<td>${a.reads??'–'}</td><td>${a.rdx??'–'}</td><td>${a.ctx??'–'}K</td>`+
+            `<td>${a.out!=null?(a.out>=1000?(a.out/1000).toFixed(1)+'k':a.out):'–'}</td>`+
+            `<td>${a.wall!=null?a.wall+'s':'–'}</td></tr>`;
+    });
+    const card=document.createElement('div'); card.className='dcase'+(idx===0?' open':'');
+    card.innerHTML=`<div class="dcase-head"><span class="cid">case-${r.id}</span>`+
+      `<span class="t">${r.label}<span class="kk ktag ${r.kind}">${r.kind==='struct'?'結構':'盲區'}</span> <span style="color:var(--muted);font-weight:400;font-size:12px">· ${isMachine?'file-recall':'判讀'}</span></span>`+
+      `<span class="vtag ${n.tag}">${n.lab}</span><span></span></div>`+
+      `<div class="dcase-body"><table class="dtbl"><thead><tr><th class="arm">條件</th><th>正確性</th><th>讀檔</th><th>rubydex</th><th>context</th><th>輸出tok</th><th>速度</th></tr></thead><tbody>${rows}</tbody></table>`+
+      `<div class="dnote">${n.note}</div></div>`;
+    card.querySelector('.dcase-head').addEventListener('click',()=>card.classList.toggle('open'));
+    wrap.appendChild(card);
+  });
+}
+(function(){
+  renderDetail('haiku');
+  document.querySelectorAll('#mtoggle button').forEach(b=>b.addEventListener('click',()=>{
+    document.querySelectorAll('#mtoggle button').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on'); renderDetail(b.dataset.m);
+  }));
+})();
+
+// ---- side nav scroll-spy ----
+(function(){
+  const links={};
+  document.querySelectorAll('.sidenav a').forEach(a=>links[a.getAttribute('href').slice(1)]=a);
+  const obs=new IntersectionObserver(entries=>{
+    entries.forEach(e=>{ if(e.isIntersecting){
+      Object.values(links).forEach(a=>a.classList.remove('active'));
+      if(links[e.target.id]) links[e.target.id].classList.add('active');
+    }});
+  },{rootMargin:'-45% 0px -50% 0px', threshold:0});
+  Object.keys(links).forEach(id=>{ const el=document.getElementById(id); if(el) obs.observe(el); });
+})();
+</script>
+</body>
+</html>
