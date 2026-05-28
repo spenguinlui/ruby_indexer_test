@@ -120,6 +120,9 @@
   .ktag{font-family:var(--mono); font-size:10px; padding:1px 6px; border-radius:20px; border:1px solid var(--line-strong); color:var(--muted)}
   .ktag.struct{color:var(--accent); border-color:var(--accent-soft); background:var(--accent-soft)}
   .ktag.blind{color:var(--over); border-color:var(--over-line); background:var(--over-bg)}
+  .ktag.tier-l1{color:#0a7d3c; border-color:#bfe6cd; background:#e8f6ee}
+  .ktag.tier-l2{color:#9a6a00; border-color:#f0dca0; background:#fbf3d8}
+  .ktag.tier-l3{color:#b23030; border-color:#f0c0c0; background:#fbe3e3}
 
   .bars{display:flex; flex-direction:column; gap:11px; margin-top:6px}
   .bar-row{display:grid; grid-template-columns:160px 1fr; gap:14px; align-items:center}
@@ -200,6 +203,7 @@
   <a href="#helps"><span class="dot"></span><span class="lbl">03 題型相依</span></a>
   <a href="#routing"><span class="dot"></span><span class="lbl">04 find_code 取代 grep</span></a>
   <a href="#efficiency"><span class="dot"></span><span class="lbl">05 讀檔/token</span></a>
+  <a href="#tiers"><span class="dot"></span><span class="lbl">★ 三層地雷分類</span></a>
   <a href="#corrections"><span class="dot"></span><span class="lbl">06 勘誤/方法</span></a>
   <a href="#verdict"><span class="dot"></span><span class="lbl">07 結論</span></a>
 </nav>
@@ -264,7 +268,7 @@
 <section id="main">
   <div class="wrap">
     <div class="sec-head"><span class="sec-num">02</span><h2>全 15 題主表</h2></div>
-    <p class="sub">上 6 題=可機器計分(數字=<b>file-recall</b>);下 9 題=judge 判讀(<b>ok / part / bad</b>)。每個模型四欄:grep → rubydex → selector → <b>orchestrator</b>(V4)。小字 = V4 的 <code>find_code</code> 呼叫次數。<span class="ktag struct">結構</span>=rubydex 主場、<span class="ktag blind">盲區</span>=答案不在靜態結構。注意計數題(case-4/4A/8)的 orch 欄被 top_k 截斷打崩。</p>
+    <p class="sub">上 6 題=可機器計分(數字=<b>file-recall</b>);下 9 題=judge 判讀(<b>ok / part / bad</b>)。每個模型四欄:grep → rubydex → selector → <b>orchestrator</b>(V4)。小字 = V4 的 <code>find_code</code> 呼叫次數。每題左欄標 <span class="ktag tier-l1">L1</span>/<span class="ktag tier-l2">L2</span>/<span class="ktag tier-l3">L3</span> 三層(見下方「三層地雷分類」section):L1 靜態顯式(工具友善)、L2 半動態需 LLM 整合、L3 runtime 求值地雷。計數題(case-4/4A/8)的 orch 欄已是 top_k 修復後數據。</p>
     <div class="legend">
       <span><i class="c-good"></i>recall ≥.999 / ok</span>
       <span><i class="c-part"></i>0.8–.99 / part</span>
@@ -354,6 +358,45 @@
   </div>
 </section>
 
+<section id="tiers">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">★</span><h2>三層地雷分類:哪些 Ruby pattern 對 AI 爬 code 友善 / 是地雷</h2></div>
+    <p class="sub">把 15 題按「AI 靜態爬 code 的瓶頸在哪」分三層。判準是 <b>靜態字面 vs 動態求值</b>:答案顯式寫在 code 裡 → 工具撈得到(L1);要 LLM 多步推理整合 → 卡模型能力(L2);要 Ruby 求值才確定 → 靜態分析的黑洞(L3)。主表每題左欄已標 <span class="ktag tier-l1">L1</span> / <span class="ktag tier-l2">L2</span> / <span class="ktag tier-l3">L3</span>。</p>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>層</th><th>Ruby pattern</th><th>case</th><th>瓶頸 / 為什麼</th></tr></thead>
+        <tbody>
+          <tr><td><span class="ktag tier-l1">L1</span> 靜態顯式</td><td class="tech">FQN 引用 / has_one+delegate / Rails routes / callback symbol / namespace 計數 / YAML 固定字串</td><td class="num">1·14·11·4·8·9·5·6</td><td class="tech">答案顯式在 AST 或字面字串裡,rubydex enrichment 或 grep 直接撈。<b>AI 友善</b>。(計數題 case-4/8 修 top_k 後才穩)</td></tr>
+          <tr><td><span class="ktag tier-l2">L2</span> 半動態 / 需整合</td><td class="tech">多 namespace 同名 class 計數 / 字串組方法名 / class_eval / method_missing</td><td class="num">4A·2·3·12</td><td class="tech">資料靜態可得,但要 LLM 多步推理(篩選+加總、推斷生成/轉發目標)。<b>強模型行、弱模型卡</b>(case-4A haiku 47 vs opus 141)。</td></tr>
+          <tr><td><span class="ktag tier-l3">L3</span> runtime 求值</td><td class="tech">polymorphic constantize / hash dispatch table / 動態 i18n key</td><td class="num">7·13·10</td><td class="tech">答案要 <b>執行 Ruby 求值</b>才確定(constantize 解到哪、hash[key] 映射、#{var} 拼出的 key)。靜態分析(rubydex/grep/AI 讀 code)本質摸不到。<b>AI 地雷</b>,只有 runtime introspection(V4-γ)摸得到。</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout"><span class="lab">關鍵判準:靜態字面 vs 動態求值</span><p>L1 與 L3 的分水嶺最值得記:<b>同樣是「字串指 class」,case-5(Sidekiq YAML worker)是 L1 友善、case-7(<code>'income_expense'.classify.constantize</code>)是 L3 地雷</b>。差別不在「有沒有用字串」,在那個字串<b>需不需要 Ruby 求值</b>才知道指向誰 —— YAML 字面固定(grep 撈),<code>classify.constantize</code> 要執行(且可能解到不存在的頂層常數 = silent bug)。Ruby 的 <code>constantize</code> / 手動 dispatch table / <code>#{}</code> 拼 key 對任何靜態分析都是黑洞。</p></div>
+    <div class="cols" style="margin-top:24px">
+      <div class="col yes">
+        <h4>✅ AI 友善的 Ruby pattern</h4>
+        <ul>
+          <li>顯式 FQN / namespace 常數引用</li>
+          <li>association(has_one/belongs_to)+ delegate 宣告</li>
+          <li>Rails routes / callback symbol(symbol→def 可追)</li>
+          <li>固定字面字串指 class(YAML config、<code>class_name: '...'</code>)</li>
+        </ul>
+      </div>
+      <div class="col no">
+        <h4>❌ AI 地雷的 Ruby pattern</h4>
+        <ul>
+          <li><code>str.classify.constantize</code> / polymorphic 解析(case-7)</li>
+          <li>手動 hash dispatch table <code>{ 'k'=>Class }[key]</code>(case-13)</li>
+          <li><code>#{var}</code> 動態拼字串 key / 方法名(case-10、case-2)</li>
+          <li>(半地雷)class_eval / method_missing 動態生成 — 強模型可推、弱模型難</li>
+        </ul>
+      </div>
+    </div>
+    <p class="note">給想評估自家 codebase「AI 友善度」的人:<b>L1</b> pattern 放心交給 AI;<b>L2</b> 給強模型 + 確保工具回完整資料(別截斷);<b>L3</b> pattern(尤其 constantize 那類)是 AI 維護黑洞 —— 考慮重構成顯式映射,或別期待靜態 AI 工具找全。這也呼應 V4 主結論:外層 orchestrator 解決 L1(+ 修 top_k 後的計數)、幫不到 L3。</p>
+  </div>
+</section>
+
 <section id="corrections">
   <div class="wrap">
     <div class="sec-head"><span class="sec-num">06</span><h2>勘誤與方法</h2></div>
@@ -399,6 +442,7 @@
 const D = {"machine":[{"id":"1","label":"has_one + delegate 鏈","kind":"struct","models":{"haiku":{"V2grep":{"recall":0.571,"reads":1,"rdx":0,"ctx":120},"V2rdx":{"recall":0.786,"reads":1,"rdx":1,"ctx":202},"V3sel":{"recall":0.643,"reads":1,"rdx":0,"ctx":611},"V4orch":{"recall":1.0,"ctx":436,"reads":0,"rdx":9}},"opus-low":{"V2grep":{"recall":0.643,"reads":3,"rdx":0,"ctx":142},"V2rdx":{"recall":0.643,"reads":9,"rdx":1,"ctx":433},"V3sel":{"recall":0.643,"reads":7,"rdx":0,"ctx":288},"V4orch":{"recall":1.0,"ctx":238,"reads":0,"rdx":9}},"codex-gpt-5.5":{"V2grep":{"recall":0.643,"reads":17,"rdx":0,"ctx":118},"V2rdx":{"recall":1.0,"reads":22,"rdx":3,"ctx":92},"V3sel":{"recall":0.643,"reads":36,"rdx":4,"ctx":89},"V4orch":{"recall":0.643,"ctx":1645,"reads":49,"rdx":44}}}},{"id":"2","label":"AASM 動態 event","kind":"struct","models":{"haiku":{"V2grep":{"recall":0.833,"reads":0,"rdx":0,"ctx":69},"V2rdx":{"recall":0.917,"reads":5,"rdx":4,"ctx":487},"V3sel":{"recall":1.0,"reads":7,"rdx":0,"ctx":826},"V4orch":{"recall":1.0,"ctx":712,"reads":3,"rdx":9}},"opus-low":{"V2grep":{"recall":0.833,"reads":0,"rdx":0,"ctx":209},"V2rdx":{"recall":0.917,"reads":6,"rdx":3,"ctx":513},"V3sel":{"recall":0.917,"reads":6,"rdx":0,"ctx":414},"V4orch":{"recall":0.833,"ctx":581,"reads":4,"rdx":24}},"codex-gpt-5.5":{"V2grep":{"recall":1.0,"reads":21,"rdx":0,"ctx":95},"V2rdx":{"recall":0.833,"reads":13,"rdx":0,"ctx":152},"V3sel":{"recall":0.917,"reads":13,"rdx":6,"ctx":71},"V4orch":{"recall":1.0,"ctx":1049,"reads":34,"rdx":51}}}},{"id":"5","label":"Sidekiq YAML 字串","kind":"blind","models":{"haiku":{"V2grep":{"recall":1.0,"reads":1,"rdx":0,"ctx":128},"V2rdx":{"recall":1.0,"reads":1,"rdx":3,"ctx":414},"V3sel":{"recall":1.0,"reads":3,"rdx":0,"ctx":385},"V4orch":{"recall":1.0,"ctx":253,"reads":0,"rdx":11}},"opus-low":{"V2grep":{"recall":1.0,"reads":2,"rdx":0,"ctx":63},"V2rdx":{"recall":1.0,"reads":1,"rdx":2,"ctx":119},"V3sel":{"recall":1.0,"reads":2,"rdx":1,"ctx":81},"V4orch":{"recall":1.0,"ctx":212,"reads":2,"rdx":6}},"codex-gpt-5.5":{"V2grep":{"recall":1.0,"reads":2,"rdx":0,"ctx":8},"V2rdx":{"recall":1.0,"reads":3,"rdx":2,"ctx":24},"V3sel":{"recall":1.0,"reads":2,"rdx":3,"ctx":33},"V4orch":{"recall":1.0,"ctx":82,"reads":0,"rdx":12}}}},{"id":"6","label":"Object monkey-patch","kind":"blind","models":{"haiku":{"V2grep":{"recall":1.0,"reads":1,"rdx":0,"ctx":96},"V2rdx":{"recall":1.0,"reads":1,"rdx":2,"ctx":161},"V3sel":{"recall":1.0,"reads":2,"rdx":2,"ctx":340},"V4orch":{"recall":1.0,"ctx":172,"reads":0,"rdx":3}},"opus-low":{"V2grep":{"recall":1.0,"reads":1,"rdx":0,"ctx":48},"V2rdx":{"recall":1.0,"reads":1,"rdx":1,"ctx":58},"V3sel":{"recall":1.0,"reads":1,"rdx":0,"ctx":76},"V4orch":{"recall":1.0,"ctx":179,"reads":1,"rdx":3}},"codex-gpt-5.5":{"V2grep":{"recall":1.0,"reads":2,"rdx":0,"ctx":3},"V2rdx":{"recall":1.0,"reads":2,"rdx":3,"ctx":23},"V3sel":{"recall":1.0,"reads":2,"rdx":6,"ctx":21},"V4orch":{"recall":1.0,"ctx":111,"reads":0,"rdx":13}}}},{"id":"13","label":"Hash dispatch 表","kind":"blind","models":{"haiku":{"V2grep":{"recall":0.5,"reads":4,"rdx":0,"ctx":720},"V2rdx":{"recall":1.0,"reads":7,"rdx":0,"ctx":1272},"V3sel":{"recall":1.0,"reads":8,"rdx":0,"ctx":1231},"V4orch":{"recall":0.75,"ctx":942,"reads":8,"rdx":28}},"opus-low":{"V2grep":{"recall":1.0,"reads":1,"rdx":0,"ctx":71},"V2rdx":{"recall":1.0,"reads":2,"rdx":4,"ctx":289},"V3sel":{"recall":0.75,"reads":5,"rdx":1,"ctx":182},"V4orch":{"recall":0.5,"ctx":405,"reads":3,"rdx":24}},"codex-gpt-5.5":{"V2grep":{"recall":1.0,"reads":14,"rdx":0,"ctx":108},"V2rdx":{"recall":1.0,"reads":13,"rdx":7,"ctx":73},"V3sel":{"recall":1.0,"reads":12,"rdx":4,"ctx":104},"V4orch":{"recall":1.0,"ctx":938,"reads":21,"rdx":34}}}},{"id":"14","label":"rename 影響面","kind":"struct","models":{"haiku":{"V2grep":{"recall":1.0,"reads":17,"rdx":0,"ctx":659},"V2rdx":{"recall":0.882,"reads":0,"rdx":2,"ctx":80},"V3sel":{"recall":1.0,"reads":2,"rdx":2,"ctx":223},"V4orch":{"recall":1.0,"ctx":112,"reads":0,"rdx":2}},"opus-low":{"V2grep":{"recall":1.0,"reads":1,"rdx":0,"ctx":81},"V2rdx":{"recall":1.0,"reads":0,"rdx":2,"ctx":86},"V3sel":{"recall":1.0,"reads":1,"rdx":1,"ctx":96},"V4orch":{"recall":1.0,"ctx":212,"reads":4,"rdx":4}},"codex-gpt-5.5":{"V2grep":{"recall":1.0,"reads":3,"rdx":0,"ctx":83},"V2rdx":{"recall":1.0,"reads":0,"rdx":2,"ctx":44},"V3sel":{"recall":1.0,"reads":4,"rdx":4,"ctx":60},"V4orch":{"recall":1.0,"ctx":472,"reads":35,"rdx":23}}}}],"value":[{"id":"3","label":"class_eval 動態生方法","kind":"blind","models":{"haiku":{"V2grep":{"judge":"part","reads":1,"rdx":0,"ctx":99},"V2rdx":{"judge":"part","reads":1,"rdx":2,"ctx":158},"V3sel":{"judge":"part","reads":1,"rdx":2,"ctx":230},"V4orch":{"judge":"part","ctx":247,"reads":1,"rdx":5}},"opus-low":{"V2grep":{"judge":"part","reads":1,"rdx":0,"ctx":46},"V2rdx":{"judge":"part","reads":1,"rdx":2,"ctx":79},"V3sel":{"judge":"ok","reads":2,"rdx":0,"ctx":78},"V4orch":{"judge":"ok","ctx":150,"reads":1,"rdx":2}},"codex-gpt-5.5":{"V2grep":{"judge":"ok","reads":3,"rdx":0,"ctx":30},"V2rdx":{"judge":"ok","reads":2,"rdx":1,"ctx":25},"V3sel":{"judge":"ok","reads":2,"rdx":5,"ctx":49},"V4orch":{"judge":"ok","ctx":87,"reads":2,"rdx":10}}}},{"id":"4","label":"namespace 給 FQN","kind":"struct","models":{"haiku":{"V2grep":{"judge":"part","reads":3,"rdx":0,"ctx":252},"V2rdx":{"judge":"ok","reads":3,"rdx":1,"ctx":594},"V3sel":{"judge":"ok","reads":3,"rdx":0,"ctx":369},"V4orch":{"judge":"ok","ctx":294,"reads":2,"rdx":5}},"opus-low":{"V2grep":{"judge":"part","reads":1,"rdx":0,"ctx":94},"V2rdx":{"judge":"ok","reads":0,"rdx":1,"ctx":235},"V3sel":{"judge":"ok","reads":2,"rdx":1,"ctx":211},"V4orch":{"judge":"ok","ctx":303,"reads":1,"rdx":4}},"codex-gpt-5.5":{"V2grep":{"judge":"ok","reads":1,"rdx":0,"ctx":42},"V2rdx":{"judge":"ok","reads":1,"rdx":0,"ctx":42},"V3sel":{"judge":"ok","reads":3,"rdx":1,"ctx":64},"V4orch":{"judge":"ok","ctx":381,"reads":0,"rdx":22}}}},{"id":"4A","label":"namespace 不給 FQN","kind":"struct","models":{"haiku":{"V2grep":{"judge":"part","reads":4,"rdx":0,"ctx":947},"V2rdx":{"judge":"ok","reads":0,"rdx":10,"ctx":137},"V3sel":{"judge":"ok","reads":1,"rdx":5,"ctx":441},"V4orch":{"judge":"bad","ctx":817,"reads":5,"rdx":14}},"opus-low":{"V2grep":{"judge":"ok","reads":0,"rdx":0,"ctx":66},"V2rdx":{"judge":"ok","reads":0,"rdx":5,"ctx":133},"V3sel":{"judge":"ok","reads":1,"rdx":4,"ctx":183},"V4orch":{"judge":"ok","ctx":374,"reads":0,"rdx":9}},"codex-gpt-5.5":{"V2grep":{"judge":"ok","reads":1,"rdx":0,"ctx":95},"V2rdx":{"judge":"ok","reads":0,"rdx":9,"ctx":31},"V3sel":{"judge":"ok","reads":0,"rdx":9,"ctx":67},"V4orch":{"judge":"ok","ctx":370,"reads":0,"rdx":22}}}},{"id":"7","label":"source_type 字串/silent bug","kind":"blind","models":{"haiku":{"V2grep":{"judge":"bad","reads":6,"rdx":0,"ctx":1484},"V2rdx":{"judge":"part","reads":3,"rdx":1,"ctx":1002},"V3sel":{"judge":"part","reads":4,"rdx":0,"ctx":718},"V4orch":{"judge":"part","ctx":1137,"reads":6,"rdx":11}},"opus-low":{"V2grep":{"judge":"bad","reads":2,"rdx":0,"ctx":244},"V2rdx":{"judge":"bad","reads":2,"rdx":3,"ctx":252},"V3sel":{"judge":"bad","reads":3,"rdx":14,"ctx":446},"V4orch":{"judge":"bad","ctx":1112,"reads":10,"rdx":26}},"codex-gpt-5.5":{"V2grep":{"judge":"bad","reads":28,"rdx":0,"ctx":109},"V2rdx":{"judge":"bad","reads":29,"rdx":4,"ctx":109},"V3sel":{"judge":"part","reads":23,"rdx":18,"ctx":226},"V4orch":{"judge":"part","ctx":1583,"reads":38,"rdx":40}}}},{"id":"8","label":"短形式↔FQN 計數","kind":"struct","models":{"haiku":{"V2grep":{"judge":"ok","reads":0,"rdx":0,"ctx":72},"V2rdx":{"judge":"ok","reads":14,"rdx":2,"ctx":392},"V3sel":{"judge":"ok","reads":0,"rdx":0,"ctx":130},"V4orch":{"judge":"ok","ctx":207,"reads":0,"rdx":4}},"opus-low":{"V2grep":{"judge":"ok","reads":0,"rdx":0,"ctx":56},"V2rdx":{"judge":"ok","reads":0,"rdx":2,"ctx":85},"V3sel":{"judge":"ok","reads":0,"rdx":1,"ctx":65},"V4orch":{"judge":"ok","ctx":279,"reads":14,"rdx":2}},"codex-gpt-5.5":{"V2grep":{"judge":"ok","reads":0,"rdx":0,"ctx":7},"V2rdx":{"judge":"ok","reads":16,"rdx":2,"ctx":20},"V3sel":{"judge":"ok","reads":16,"rdx":1,"ctx":25},"V4orch":{"judge":"ok","ctx":121,"reads":0,"rdx":15}}}},{"id":"9","label":"callback symbol","kind":"blind","models":{"haiku":{"V2grep":{"judge":"ok","reads":1,"rdx":0,"ctx":264},"V2rdx":{"judge":"part","reads":1,"rdx":6,"ctx":494},"V3sel":{"judge":"ok","reads":2,"rdx":0,"ctx":448},"V4orch":{"judge":"ok","ctx":394,"reads":1,"rdx":7}},"opus-low":{"V2grep":{"judge":"ok","reads":1,"rdx":0,"ctx":96},"V2rdx":{"judge":"ok","reads":1,"rdx":1,"ctx":139},"V3sel":{"judge":"ok","reads":1,"rdx":0,"ctx":105},"V4orch":{"judge":"ok","ctx":331,"reads":1,"rdx":12}},"codex-gpt-5.5":{"V2grep":{"judge":"ok","reads":4,"rdx":0,"ctx":38},"V2rdx":{"judge":"ok","reads":4,"rdx":2,"ctx":99},"V3sel":{"judge":"ok","reads":3,"rdx":3,"ctx":29},"V4orch":{"judge":"ok","ctx":224,"reads":5,"rdx":27}}}},{"id":"10","label":"i18n 動態 key","kind":"blind","models":{"haiku":{"V2grep":{"judge":"part","reads":6,"rdx":0,"ctx":1180},"V2rdx":{"judge":"part","reads":7,"rdx":0,"ctx":1677},"V3sel":{"judge":"part","reads":8,"rdx":0,"ctx":857},"V4orch":{"judge":"part","ctx":1747,"reads":7,"rdx":8}},"opus-low":{"V2grep":{"judge":"ok","reads":0,"rdx":0,"ctx":39},"V2rdx":{"judge":"ok","reads":5,"rdx":0,"ctx":398},"V3sel":{"judge":"ok","reads":4,"rdx":0,"ctx":321},"V4orch":{"judge":"ok","ctx":447,"reads":2,"rdx":7}},"codex-gpt-5.5":{"V2grep":{"judge":"ok","reads":10,"rdx":0,"ctx":94},"V2rdx":{"judge":"ok","reads":19,"rdx":0,"ctx":83},"V3sel":{"judge":"ok","reads":17,"rdx":7,"ctx":174},"V4orch":{"judge":"ok","ctx":593,"reads":16,"rdx":44}}}},{"id":"11","label":"routes helper 反查","kind":"struct","models":{"haiku":{"V2grep":{"judge":"part","reads":3,"rdx":0,"ctx":639},"V2rdx":{"judge":"part","reads":5,"rdx":0,"ctx":595},"V3sel":{"judge":"ok","reads":3,"rdx":0,"ctx":918},"V4orch":{"judge":"ok","ctx":845,"reads":3,"rdx":23}},"opus-low":{"V2grep":{"judge":"ok","reads":2,"rdx":0,"ctx":58},"V2rdx":{"judge":"ok","reads":2,"rdx":2,"ctx":245},"V3sel":{"judge":"ok","reads":2,"rdx":0,"ctx":148},"V4orch":{"judge":"ok","ctx":338,"reads":1,"rdx":8}},"codex-gpt-5.5":{"V2grep":{"judge":"ok","reads":7,"rdx":0,"ctx":73},"V2rdx":{"judge":"ok","reads":7,"rdx":4,"ctx":73},"V3sel":{"judge":"ok","reads":6,"rdx":3,"ctx":94},"V4orch":{"judge":"ok","ctx":386,"reads":19,"rdx":30}}}},{"id":"12","label":"method_missing 轉發","kind":"blind","models":{"haiku":{"V2grep":{"judge":"ok","reads":8,"rdx":0,"ctx":376},"V2rdx":{"judge":"ok","reads":4,"rdx":0,"ctx":380},"V3sel":{"judge":"ok","reads":7,"rdx":0,"ctx":448},"V4orch":{"judge":"ok","ctx":504,"reads":4,"rdx":1}},"opus-low":{"V2grep":{"judge":"ok","reads":4,"rdx":0,"ctx":174},"V2rdx":{"judge":"ok","reads":5,"rdx":6,"ctx":303},"V3sel":{"judge":"ok","reads":5,"rdx":0,"ctx":243},"V4orch":{"judge":"ok","ctx":702,"reads":4,"rdx":10}},"codex-gpt-5.5":{"V2grep":{"judge":"ok","reads":16,"rdx":0,"ctx":93},"V2rdx":{"judge":"ok","reads":12,"rdx":3,"ctx":27},"V3sel":{"judge":"ok","reads":12,"rdx":8,"ctx":86},"V4orch":{"judge":"ok","ctx":303,"reads":23,"rdx":7}}}}]};
 const MODELS=[['haiku','Haiku'],['opus-low','Opus'],['codex-gpt-5.5','GPT-5.5']];
 const CONDS=['V2grep','V2rdx','V3sel','V4orch'];
+const TIER={'1':'L1','14':'L1','11':'L1','4':'L1','8':'L1','9':'L1','5':'L1','6':'L1','4A':'L2','2':'L2','3':'L2','12':'L2','7':'L3','13':'L3','10':'L3'};
 
 function recallClass(v){ if(v==null) return 'c-na'; if(v>=0.999) return 'c-good'; if(v>=0.8) return 'c-part'; if(v>=0.6) return 'c-miss2'; return 'c-bad'; }
 function judgeClass(j){ return j==='ok'?'c-ok':j==='part'?'c-part':'c-bad'; }
@@ -407,7 +451,8 @@ function judgeClass(j){ return j==='ok'?'c-ok':j==='part'?'c-part':'c-bad'; }
 (function(){
   const tb=document.querySelector('#mainTable tbody');
   function rowFor(r, isMachine){
-    let html=`<td class="cid">case-${r.id}</td><td><span class="ktag ${r.kind}">${r.kind==='struct'?'結構':'盲區'}</span></td>`;
+    const tier=TIER[r.id]||'L1';
+    let html=`<td class="cid">case-${r.id}</td><td><span class="ktag tier-${tier.toLowerCase()}">${tier}</span></td>`;
     MODELS.forEach(([mk],mi)=>{
       CONDS.forEach((c,ci)=>{
         const cell=r.models[mk][c];
@@ -479,7 +524,8 @@ function judgeClass(j){ return j==='ok'?'c-ok':j==='part'?'c-part':'c-bad'; }
   const all=[...D.machine,...D.value];
   // order: struct first then blind, machine then value within
   all.forEach(r=>{
-    let html=`<td class="cid">case-${r.id}</td><td><span class="ktag ${r.kind}">${r.kind==='struct'?'結構':'盲區'}</span></td>`;
+    const tier=TIER[r.id]||'L1';
+    let html=`<td class="cid">case-${r.id}</td><td><span class="ktag tier-${tier.toLowerCase()}">${tier}</span></td>`;
     MODELS.forEach(([mk])=>{
       const n=r.models[mk].V4orch.rdx||0;
       const cls = r.kind==='struct' ? (n>0?'c-ok':'c-bad') : (n>0?'c-part':'c-good');
