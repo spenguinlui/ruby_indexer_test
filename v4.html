@@ -238,7 +238,7 @@
   <div class="wrap">
     <div class="tldr">
       <span class="lab">一句話結論</span>
-      <p><strong>外層 orchestrator 不是萬靈丹:它的價值強烈題型相依。「找位置 / 找全少量引用」題持平甚至更好(弱模型還省 context),但「列舉 / 計數所有引用」題被 find_code 的 top_k 截斷打崩,盲區推理題照樣無解。</strong></p>
+      <p><strong>外層 orchestrator 不是萬靈丹:它的價值強烈題型相依。「找位置 / 找全少量引用」題持平甚至更好,但「列舉 / 計數所有引用」題要靠 find_code 回確切 total(否則 top_k 截斷打崩),盲區推理題照樣無解;而且全程是用 ctx 換正確性,不省 context。</strong></p>
       <p><strong>機器 6 題(file-level recall)V4 持平/略升</strong>:平均 Haiku .955 / Opus .945(↑) / Codex .93、case-1(delegate 鏈)從 V3 的 0.64 衝到 1.0 —— <code>find_constant_references</code> enrichment 一次抓全引用。value 9 題裡的 <strong>計數窮舉題(case-4/4A/8)一度被 top_k 截斷打崩</strong>:原始 V4-α 只回 top_k=10 候選、不回 total → LLM 把「~100 筆引用」報成 33-38,三模型 value 從 V3sel 的 7.5/8.0/8.5 掉到 5.0/6.0/5.5。<strong>但這是可修的工程債</strong>:讓 find_code 回確切 <code>total</code> + 不截斷引用集後重跑,計數題 9 格救回 8 ok —— <strong>強模型 Opus/Codex value 追平 V3sel(8.0/8.5)、弱模型 Haiku 回到 6.5</strong>。只剩 case-4A(無 FQN、要自己找全 4 類別並加總)haiku 仍漏:orchestrator 給對了 per-class total,卡在 haiku 不會整合(opus/codex 則整合成功)。機器 6 題(算「哪些檔」、top_k 夠)本就沒崩,V4 持平/略升(case-1 delegate 0.64→1.0)。</p>
       <p><strong>效率是「ctx 換正確性」,不是省 ctx</strong>:exact-fix(structural 一律 enrich 拿全引用集 + 回 total)是計數題救回的關鍵,代價是 structural 題 ctx 普遍增 —— 6 機器題 aggregate vs V3sel:Haiku +31%、Opus +48%、Codex +1263%(三模型全增)。拿全引用集對「找哪些檔」的定位題其實拿過頭。<strong>原報告「弱模型 Haiku 省 ctx」是混版假象</strong>(當時 haiku machine 用最早低-enrich 數據;統一 exact-fix 後翻轉)。</p>
       <p>三個 caveat:① <strong>case-7</strong> silent bug 三模型 9 格仍全摃龜(orchestrator 對推理盲點無增益)。② V4 toolset = V3 + orchestrator 疊加;曾試 <code>--disallowedTools</code> 拔掉 raw grep/Read 強制單一通道,recall 反而更崩(case-2 1.0→0.0)—— pure single-channel 不可行,hybrid 才是現實。③ 全程 <strong>n=1</strong>。</p>
@@ -298,7 +298,7 @@
 <section id="detail">
   <div class="wrap">
     <div class="sec-head"><span class="sec-num">★</span><h2>逐題詳表:六臂並排,每題一段評語</h2></div>
-    <p class="sub">每題把 <b>V1 兩臂</b>、<b>V2 兩臂</b>、<b>V3 selector</b>、<b>V4 orchestrator</b> 並排,看「正確性」對上「讀檔 / context / 輸出 token / 速度」。V4 看點:定位題上 find_code 取代廣搜、<b>弱模型讀更少更省</b>;但計數題 <b>top_k 截斷讓正確性崩</b>、強模型 context 反增。切換模型看各自數字;點題目展開。</p>
+    <p class="sub">每題把 <b>V1 兩臂</b>、<b>V2 兩臂</b>、<b>V3 selector</b>、<b>V4 orchestrator</b> 並排,看「正確性」對上「讀檔 / context / 輸出 token / 速度」。V4 看點:定位題 find_code 取代廣搜、recall 穩;計數題靠回 total 救回(top_k 截斷會崩);全程 <b>ctx 換正確性</b>(structural 一律 enrich 拿全引用集 → 三模型 ctx 都增)。切換模型看各自數字;點題目展開。</p>
     <div class="callout warn"><span class="lab">V1 的正確性不上表</span><p>V1 問法較窄(例如 case-1 只問「分類 mobile 的呼叫點」而非「找全所有檔」)、又是另一套 answer key → file-recall 不公平。所以 <b>V1 只列資源指標(context / token / 速度)當前身參考</b>,正確性欄留「—」。嚴謹的正確性比較看 V2↔V3。</p></div>
     <div class="mtoggle" id="mtoggle">
       <button data-m="haiku" class="on">Haiku 4.5</button>
@@ -320,7 +320,7 @@
         <h4>✓ V4 持平或更好的題型</h4>
         <ul>
           <li><b>找全少量引用 / 定位</b>(case-1 delegate 鏈、case-9 callback、case-11 routes、case-12 types):<code>find_constant_references</code> enrichment 一次抓全,case-1 從 V3 的 0.64 衝到 1.0。引用數在 top_k 內,截斷不影響。</li>
-          <li><b>弱模型還省 context</b>:find_code 取代廣搜 grep → Haiku 6 機器題 ctx 全省 −14%~−50%。</li>
+          <li><b>recall 穩定</b>:定位題引用數在 top_k 內,enrichment 一次抓全、不受截斷影響(case-1/14)。(代價:structural 一律 enrich → ctx 增,見效率節。)</li>
         </ul>
       </div>
       <div class="col no">
@@ -351,7 +351,7 @@
 
 <section id="efficiency">
   <div class="wrap">
-    <div class="sec-head"><span class="sec-num">05</span><h2>讀檔 / token:弱模型省、強模型反增</h2></div>
+    <div class="sec-head"><span class="sec-num">05</span><h2>讀檔 / token:用 ctx 換正確性(三模型都增)</h2></div>
     <p class="sub">6 機器題的 aggregate context token(in+cache+out,K),四條件並排。下圖 orchestrator 條是 <b>exact-fix 後</b>數據:<b>三模型都比 V3sel 長</b>(Haiku +31%/Opus +48%/Codex +1263%)。exact-fix 的「structural 一律 enrich 拿全引用集 + 回 total」是計數題救回必需,但對定位題是拿過頭 → ctx 普遍增。這是 V4 的真實 trade-off:<b>用 ctx 換計數正確 + recall 穩 + 不賭 LLM 措辭</b>。</p>
     <div class="bars" id="ctxBars" style="margin:18px 0 6px"></div>
     <p class="note">exact-fix 後 6 機器題 aggregate ctx vs V3sel:<b>Haiku 3616K→4749K(+31%)、Opus 1137K→1679K(+48%)、Codex 378K→5151K(+1263%)</b> —— 三模型全增。Codex 增最猛是因為它 V3sel 本來惜字如金(ctx 極低),exact-fix 後每 structural 題拿全引用集 → 灌爆。<b>這是用 ctx 換正確性的 trade-off</b>:top_k 修復前計數題崩(省 ctx 但答錯),修復後計數對(代價 ctx)。對「找哪些檔」的定位題,拿全引用集確實過頭 —— 若要再省,該按 intent 區分「計數拿全 vs 定位拿位置」,但那會把判斷複雜度加回來(α 選了簡單可靠:一律拿全 + 回 total)。</p>
@@ -421,7 +421,7 @@
     <div class="sec-head"><span class="sec-num">07</span><h2>結論</h2></div>
     <p>① <b>外層 routing 本身可行</b>:rule-based intent classifier + 單一 <code>find_code</code> 工具真的把路由從 prompt 拉出來了 —— 三模型在結構題乖乖走 rubydex、字串題走 rg,不再像 V3 selector 那樣亂挑。case-1(delegate 鏈)從 V3 的 0.64 衝到 1.0 是最好的證據。</p>
     <p>② <b>計數窮舉題的崩是可修工程債,不是 orchestrator 本質限制</b>:原始 V4-α 的 top_k 截斷讓 case-4/4A/8 報殘缺數字(三模型 value 掉到 5.0/6.0/5.5);診斷後讓 find_code 回確切 <code>total</code> + 不截斷引用集,重跑救回 9 格中 8 ok,<b>強模型 Opus/Codex value 追平 V3sel(8.0/8.5)</b>。剩 case-4A haiku 仍 bad —— 那是「多目標 + 需語意篩選哪些 class 算 + 加總」卡 LLM 整合(opus/codex 整合成功),不是工具給不出資料。</p>
-    <p>③ <b>效率是模型相依的反轉</b>:弱模型(Haiku)find_code 取代廣搜 → ctx 省 33%、recall 還升;強模型(Opus)本來惜字如金,被 orchestrator + primer 強灌候選 → ctx 反增 120%。<b>orchestrator 對已經高效的模型是淨負擔</b>。</p>
+    <p>③ <b>效率是「用 ctx 換正確性」,不是省 ctx</b>:exact-fix 的 structural 一律 enrich 拿全引用集 + 回 total 是計數題救回的關鍵,代價是 6 機器題 ctx 三模型全增(Haiku +31%/Opus +48%/Codex +1263% vs V3sel)。對只需「找哪些檔」的定位題,拿全引用集其實過頭。(原報告「弱模型省 ctx」是混版假象,統一 exact-fix 後翻轉。)</p>
     <p>④ <b>pure single-channel 不可行</b>:試過 <code>--disallowedTools</code> 拔掉 raw grep/Read 強制只走 find_code,recall 反而更崩(case-2 1.0→0.0、LLM 在部分題直接認輸)。實務上 hybrid(orchestrator + LLM 自選 raw 補強)才是現實 —— V4 是<b>加</b>在工具箱、不是<b>取代</b>。</p>
     <div class="callout"><span class="lab">V4-β go / no-go</span><p><b>值得做。</b>本輪已修掉最大硬傷 <b>top_k 截斷</b>(find_code 回確切 <code>total</code> + 不截斷引用集),計數題 9 格救回 8 ok、強模型 value 追平 V3sel。剩兩個課題:(1) <b>case-4A 多目標整合</b> —— orchestrator 給對 per-class total,但弱模型(haiku)不會「語意篩選哪些 class 算 + 加總」(opus/codex 會),這是 LLM 能力邊界、非工具能全補。(2) <b>強模型負擔</b> —— orchestrator 對 opus 是淨 context 增,別無差別強推。β 方向(ruby-lsp-rails 補 route/association、rails runtime 補 constantize/polymorphic)仍合理。</p></div>
     <div class="callout"><span class="lab">如何看這些數字</span><p>每格只跑<b>一次(n=1)</b>,單次變異很大。所有結論都是<b>方向性訊號</b>;單題的小差異(尤其 ±1 個 part/ok)別當定論。要可發布的強主張需每格 N 次取中位。</p></div>
