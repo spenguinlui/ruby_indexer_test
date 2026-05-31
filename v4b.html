@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>V4-β.2 · Rubydex Benchmark — rails-dsl backend,模型相依的雙刃劍</title>
+<meta name="description" content="V4-β.2 = 在 V4-α orchestrator 上加 rails-dsl 靜態 backend(prism AST 抽 Rails routes + ActiveRecord 關聯)+ tokenizing query scorer + hint vocabulary。3 模型 × 15 題重跑後結論:不是 universal 升級,是 model-dependent trade-off,而且強模型還是 machine ↔ value 二次 trade-off。Codex machine 大勝(file-recall .857→1.000、ctx −30%)但 value 大降(8.5→6.0,case-4/4A/7 全崩);Opus 個案性勝(case-7 silent bug bad→ok);Haiku 雙降(主場 case-11 routes 在 1-shot 答案後拒絕作答 = β.2 最戲劇反諷)。結論:β.2 該按題型 selectively 開,V4-γ runtime 仍 no-go。n=1。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#f4efe6; --card:#fbf9f4; --ink:#211f1c; --muted:#6b6358;
+    --line:#e2d9c8; --line-strong:#ccc0a8;
+    --accent:#0f766e; --accent-soft:#cfeae6;
+    --good:#15803d; --good-bg:#dcfce7; --good-line:#a7e3bc;
+    --miss:#b91c1c; --miss-bg:#fde2e2; --miss-line:#f3b4b4;
+    --over:#b45309; --over-bg:#fdeccf; --over-line:#eecb8e;
+    --mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+    --disp:'Space Grotesk',system-ui,sans-serif;
+    --body:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC",sans-serif;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0; font-family:var(--body); color:var(--ink); line-height:1.65;
+    background:
+      radial-gradient(1200px 600px at 80% -10%, #fbf6ec 0%, rgba(251,246,236,0) 60%),
+      radial-gradient(900px 500px at -10% 10%, #f1ece0 0%, rgba(241,236,224,0) 55%),
+      var(--paper);
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1080px; margin:0 auto; padding:0 24px}
+  a{color:var(--accent); text-underline-offset:3px}
+
+  .sidenav{position:fixed; left:24px; top:50%; transform:translateY(-50%); z-index:60;
+    display:flex; flex-direction:column; gap:1px;
+    background:rgba(255,255,255,.6); backdrop-filter:blur(12px) saturate(1.1); -webkit-backdrop-filter:blur(12px) saturate(1.1);
+    border:1px solid rgba(255,255,255,.8); box-shadow:0 10px 34px rgba(40,30,10,.12); border-radius:16px; padding:9px}
+  .sidenav-h{font-family:var(--mono); font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:var(--muted); padding:4px 12px 7px}
+  .sidenav a{display:flex; align-items:center; gap:10px; text-decoration:none; color:var(--muted);
+    padding:7px 14px 7px 11px; border-radius:10px; font-family:var(--mono); font-size:12px; line-height:1; white-space:nowrap; transition:background .15s,color .15s}
+  .sidenav .dot{width:6px; height:6px; border-radius:50%; background:var(--line-strong); transition:all .2s; flex:0 0 auto}
+  .sidenav a:hover{background:rgba(255,255,255,.72)}
+  .sidenav a:hover .lbl{color:var(--ink)}
+  .sidenav a.active{background:var(--accent-soft)}
+  .sidenav a.active .dot{background:var(--accent); transform:scale(1.35)}
+  .sidenav a.active .lbl{color:var(--accent); font-weight:600}
+  @media(max-width:1340px){ .sidenav{display:none} }
+
+  header.hero{padding:72px 0 40px; border-bottom:1px solid var(--line)}
+  .kicker{font-family:var(--mono); font-size:12.5px; letter-spacing:.16em; text-transform:uppercase;
+    color:var(--accent); display:inline-flex; align-items:center; gap:9px}
+  .kicker::before{content:""; width:26px; height:1px; background:var(--accent)}
+  h1{font-family:var(--disp); font-weight:700; font-size:clamp(34px,5.4vw,58px);
+    line-height:1.04; letter-spacing:-.02em; margin:18px 0 0}
+  h1 em{font-style:normal; color:var(--accent)}
+  .lede{font-size:clamp(16px,2.1vw,20px); color:var(--muted); max-width:760px; margin:20px 0 0}
+  .meta{font-family:var(--mono); font-size:12.5px; color:var(--muted); margin-top:22px; display:flex; flex-wrap:wrap; gap:6px 18px}
+  .meta b{color:var(--ink); font-weight:500}
+
+  .stats{display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin:38px 0 0}
+  .stat{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px 18px 16px}
+  .stat .n{font-family:var(--disp); font-weight:700; font-size:29px; line-height:1; letter-spacing:-.02em}
+  .stat .l{font-size:12.5px; color:var(--muted); margin-top:8px}
+  .stat.accent .n{color:var(--accent)}
+  .stat.bad .n{color:var(--miss)}
+  .stat.warn .n{color:var(--over)}
+
+  section{padding:54px 0; border-bottom:1px solid var(--line)}
+  .sec-head{display:flex; align-items:baseline; gap:14px; margin:0 0 22px}
+  .sec-num{font-family:var(--mono); font-size:13px; color:var(--accent); font-weight:500}
+  h2{font-family:var(--disp); font-weight:600; font-size:clamp(23px,3.2vw,30px); letter-spacing:-.01em; margin:0}
+  h3{font-family:var(--disp); font-weight:600; font-size:18px; margin:30px 0 12px}
+  p{margin:0 0 14px}
+  .sub{color:var(--muted)}
+
+  .tldr{background:linear-gradient(180deg,#15433f,#0f2f2c); color:#eafaf6; border-radius:18px;
+    padding:30px 32px; font-size:clamp(16px,2.1vw,19px); line-height:1.6}
+  .tldr .lab{font-family:var(--mono); font-size:12px; letter-spacing:.16em; text-transform:uppercase; color:#79d8c9}
+  .tldr strong{color:#fff}
+  .tldr p{margin:12px 0 0}
+  .tldr p:first-of-type{margin-top:14px}
+
+  .callout{border-left:3px solid var(--miss); background:var(--miss-bg); border-radius:0 12px 12px 0;
+    padding:16px 20px; margin:20px 0}
+  .callout .lab{font-family:var(--mono); font-size:11.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--miss); font-weight:700}
+  .callout p{margin:6px 0 0; font-size:15px}
+  .callout.acc{border-left-color:var(--accent); background:var(--accent-soft)}
+  .callout.acc .lab{color:var(--accent)}
+  .callout.warn{border-left-color:var(--over); background:var(--over-bg)}
+  .callout.warn .lab{color:var(--over)}
+
+  .tbl-wrap{overflow-x:auto; border:1px solid var(--line); border-radius:14px; background:var(--card)}
+  table{border-collapse:collapse; width:100%; font-size:14px}
+  th,td{padding:11px 13px; text-align:left; border-bottom:1px solid var(--line); white-space:nowrap}
+  thead th{font-family:var(--mono); font-size:11.5px; letter-spacing:.04em; text-transform:uppercase;
+    color:var(--muted); font-weight:500; background:#f7f2e8}
+  tbody tr:last-child td{border-bottom:none}
+  tbody tr:hover{background:#f7f2e8}
+  td.tech{white-space:normal; min-width:160px; font-weight:500}
+  .num{font-family:var(--mono); text-align:right}
+  .cid{font-family:var(--mono); font-weight:700; color:var(--ink)}
+
+  .legend{display:flex; flex-wrap:wrap; gap:6px 16px; font-family:var(--mono); font-size:11.5px; color:var(--muted); margin:0 0 14px}
+  .legend i{display:inline-block; width:13px; height:13px; border-radius:3px; vertical-align:-2px; margin-right:6px; border:1px solid rgba(0,0,0,.08)}
+  .hm td.cell{font-family:var(--mono); text-align:center; font-weight:600; cursor:default; min-width:54px}
+  .hm td.cell .d{font-size:9.5px; opacity:.7; display:block; margin-top:1px; font-weight:500}
+  .hm thead th.grp{text-align:center; border-left:2px solid var(--line-strong)}
+  .hm thead th.sub{text-align:center; font-size:10px}
+  .hm td.gleft{border-left:2px solid var(--line-strong)}
+  .hm td.cap{font-family:var(--body); font-weight:500; white-space:nowrap}
+  .hm td.cell.hi{box-shadow:inset 0 0 0 2px var(--accent)}
+  .c-good{background:var(--good-bg); color:var(--good)}
+  .c-miss1{background:#fdecec; color:var(--miss)}
+  .c-miss2{background:#fbd4d4; color:#7f1212}
+  .c-miss3{background:#f3a8a8; color:#5c0a0a}
+  .c-na{background:#efeae0; color:#a59c8c}
+  .c-ok{background:var(--good-bg); color:var(--good)}
+  .c-part{background:#fdf0d8; color:var(--over)}
+  .c-bad{background:#f3a8a8; color:#5c0a0a}
+  .ktag{font-family:var(--mono); font-size:10px; padding:1px 6px; border-radius:20px; border:1px solid var(--line-strong); color:var(--muted)}
+  .ktag.struct{color:var(--accent); border-color:var(--accent-soft); background:var(--accent-soft)}
+  .ktag.blind{color:var(--over); border-color:var(--over-line); background:var(--over-bg)}
+  .ktag.up{color:var(--good); border-color:var(--good-line); background:var(--good-bg)}
+  .ktag.down{color:var(--miss); border-color:var(--miss-line); background:var(--miss-bg)}
+  .ktag.flat{color:var(--muted); background:#efe8db}
+
+  .bars{display:flex; flex-direction:column; gap:11px; margin-top:6px}
+  .bar-row{display:grid; grid-template-columns:180px 1fr; gap:14px; align-items:center}
+  .bar-row .lbl{font-family:var(--mono); font-size:12.5px; font-weight:500; text-align:right}
+  .bar-row .lbl .tag{display:block; font-size:10px; color:var(--muted); font-weight:400}
+  .track{position:relative; height:28px; background:#efe8db; border-radius:8px; overflow:hidden}
+  .fill{position:absolute; left:0; top:0; bottom:0; border-radius:8px; display:flex; align-items:center;
+    justify-content:flex-end; padding:0 10px; font-family:var(--mono); font-size:12px; color:#fff; font-weight:500;
+    min-width:46px; transition:width .9s cubic-bezier(.2,.8,.2,1)}
+  .fill.win{background:linear-gradient(90deg,#16a34a,#15803d)}
+  .fill.mid{background:linear-gradient(90deg,#d99220,#b45309)}
+  .fill.bad{background:linear-gradient(90deg,#dc4747,#b91c1c)}
+  .fill.cool{background:linear-gradient(90deg,#0d9488,#0f766e)}
+
+  .cols{display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:8px}
+  .col{border:1px solid var(--line); border-radius:14px; padding:20px 22px; background:var(--card)}
+  .col.yes{border-color:var(--good-line); background:linear-gradient(180deg,#f1faf3,#fbf9f4)}
+  .col.no{border-color:var(--over-line); background:linear-gradient(180deg,#fdf6ea,#fbf9f4)}
+  .col h4{font-family:var(--disp); font-size:16px; margin:0 0 12px; display:flex; align-items:center; gap:8px}
+  .col.yes h4{color:var(--good)} .col.no h4{color:var(--over)}
+  .col ul{margin:0; padding-left:18px} .col li{margin:0 0 8px; font-size:14px}
+  .col code{font-family:var(--mono); font-size:12.5px; background:#00000008; padding:1px 5px; border-radius:5px}
+
+  pre{font-family:var(--mono); font-size:12.5px; line-height:1.6; background:#1c2522; color:#dbe9e5;
+    border-radius:12px; padding:18px 20px; overflow-x:auto; margin:14px 0}
+  pre .cm{color:#7fae9f} pre .hi{color:#ffd479}
+  code{font-family:var(--mono)}
+  .note{font-size:13px; color:var(--muted)}
+
+  .vswitch{display:inline-flex; gap:2px; margin-top:18px; background:var(--card); border:1px solid var(--line); border-radius:11px; padding:3px}
+  .vswitch a{font-family:var(--mono); font-size:12.5px; text-decoration:none; color:var(--muted); padding:6px 14px; border-radius:8px}
+  .vswitch a.cur{background:var(--accent); color:#fff; font-weight:600}
+
+  .model-card{display:grid; grid-template-columns:200px 1fr; gap:18px; align-items:start; padding:22px 24px; border:1px solid var(--line); border-radius:14px; background:var(--card); margin:0 0 14px}
+  .model-card .head{position:sticky}
+  .model-card .vname{font-family:var(--disp); font-weight:700; font-size:22px; margin:0 0 4px}
+  .model-card .vsub{font-family:var(--mono); font-size:12px; color:var(--muted)}
+  .model-card .verdict{display:inline-block; margin-top:10px; font-family:var(--mono); font-size:11.5px; padding:4px 10px; border-radius:20px; font-weight:700; letter-spacing:.04em}
+  .model-card.win{border-left:6px solid var(--good); }
+  .model-card.lose{border-left:6px solid var(--miss); }
+  .model-card.mixed{border-left:6px solid var(--over); }
+  .model-card.win .verdict{background:var(--good-bg); color:var(--good)}
+  .model-card.lose .verdict{background:var(--miss-bg); color:var(--miss)}
+  .model-card.mixed .verdict{background:var(--over-bg); color:var(--over)}
+  .model-card .miniline{font-family:var(--mono); font-size:12.5px; color:var(--muted); margin:6px 0 0}
+  .model-card .body p{margin:0 0 10px; font-size:14.5px; line-height:1.7}
+  .model-card .body p:last-child{margin:0}
+  @media(max-width:760px){
+    .stats{grid-template-columns:repeat(2,1fr)}
+    .cols{grid-template-columns:1fr}
+    .bar-row{grid-template-columns:130px 1fr}
+    h1{font-size:34px}
+    .model-card{grid-template-columns:1fr}
+  }
+
+  footer{padding:46px 0 70px; color:var(--muted); font-size:13px}
+  footer .anon{background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px 20px; margin:0 0 22px; font-size:13px}
+  footer code{background:#00000008; padding:1px 5px; border-radius:5px; font-size:12px}
+</style>
+</head>
+<body>
+
+<nav class="sidenav" id="sidenav" aria-label="章節導覽">
+  <div class="sidenav-h">V4-β.2 目錄</div>
+  <a href="#tldr"><span class="dot"></span><span class="lbl">摘要</span></a>
+  <a href="#design"><span class="dot"></span><span class="lbl">01 為什麼做 β.2</span></a>
+  <a href="#main"><span class="dot"></span><span class="lbl">02 機器主表</span></a>
+  <a href="#value"><span class="dot"></span><span class="lbl">03 value bars</span></a>
+  <a href="#ctx"><span class="dot"></span><span class="lbl">04 ctx bars</span></a>
+  <a href="#split"><span class="dot"></span><span class="lbl">05 三模型相依</span></a>
+  <a href="#fit"><span class="dot"></span><span class="lbl">06 對誰值得</span></a>
+  <a href="#stories"><span class="dot"></span><span class="lbl">07 case 故事</span></a>
+  <a href="#verdict"><span class="dot"></span><span class="lbl">08 結論 + γ go/no-go</span></a>
+</nav>
+
+<header class="hero">
+  <div class="wrap">
+    <span class="kicker">Code-Search Benchmark · V4-β.2 · rails-dsl backend × 全 15 題 · 2026</span>
+    <h1>裝了 <em>rails-dsl backend</em> 之後:<br>強模型 machine 全綠、value 卻大降</h1>
+    <p class="lede">V4-α 證明外層 orchestrator 把 routing 拉到 LLM 外面可行,但僅有 rubydex + rg 兩個 backend、沒兌現「多工具協同」的承諾。<b>V4-β.2</b> 補上 <code>rails-dsl</code>:靜態 prism AST 抽 Rails routes + ActiveRecord 關聯 + polymorphic 線索,搭配 tokenizing query scorer 與 hint vocabulary。三模型 × 15 題重跑(<code>ORCH_ENABLE_RAILS_DSL=1</code>),這次拿 V2-grep / V2-rdx / V3-sel / V4-orch(α)/ V4-orch(β.2)五臂並排。問題:加了 Rails 知識的 backend,真的全面變好嗎?</p>
+    <div class="vswitch">
+      <a href="./index.html">V1</a>
+      <a href="./v2.html">V2</a>
+      <a href="./v3.html">V3</a>
+      <a href="./v4.html">V4-α</a>
+      <a class="cur" href="./v4b.html">V4-β.2</a>
+    </div>
+    <div class="meta">
+      <span><b>15</b> cases(6 機器 + 9 判讀)</span>
+      <span><b>3</b> models(Haiku 4.5 · Opus 4.7-low · GPT-5.5)</span>
+      <span><b>5</b> arms(grep / rdx / sel / α / β.2)</span>
+      <span><b>n=1</b>,看方向不看小數點</span>
+    </div>
+    <div class="stats">
+      <div class="stat accent"><div class="n">Codex: 全綠</div><div class="l">機器 6 題 file-recall <b>0.857 → 1.000</b>(+14pp,full mark)+ ctx <b>−30%</b>。β.2 最大個案勝。但同模型 value 從 8.5 → 6.0,case-4/4A/7 全崩</div></div>
+      <div class="stat warn"><div class="n">Haiku: 雙降</div><div class="l">機器 recall <b>0.958 → 0.827</b>(−13pp)、value <b>7.0 → 6.0</b>(−1.0,主場 case-11 在 rails-dsl 1-shot 答案後拒絕作答)。β.2 最戲劇反諷</div></div>
+      <div class="stat"><div class="n">Opus: 個案性升</div><div class="l">machine recall +4pp、ctx +27%(中性偏正)。value 7→8.5(+0.5,case-7 silent bug bad→ok 是 rails-dsl polymorphic 上下文的純贏)</div></div>
+      <div class="stat bad"><div class="n">非 universal</div><div class="l">β.2 不是 universal 升級。是<b>模型相依 + 題型相依</b>的雙重 trade-off,而且強模型 machine ↔ value 二次拉鋸。selectively 開,不要無條件 on</div></div>
+    </div>
+  </div>
+</header>
+
+<section id="tldr">
+  <div class="wrap">
+    <div class="tldr">
+      <span class="lab">一句話結論</span>
+      <p><strong>V4-β.2(orchestrator + rails-dsl)不是「下一代 V4」,是有強烈題型 × 模型相依的 selective add-on。對 Codex 強模型而言:rails-dsl 把它變成 machine-recall 完美機(0.857→1.000、ctx −30%),代價是 value 大降(8.5→6.0,計數與 silent bug 推理題崩);對 Opus 個案性勝(case-7 silent bug bad→ok);對 Haiku 雙降,連最該贏的主場 case-11 都因 1-shot 答案後撞 cwd 衝突直接拒絕作答。</strong></p>
+      <p><strong>最戲劇的反諷是 Haiku case-11 routes-helper</strong>(rails-dsl 的指定主場題):context 從 1209K 砍到 80K、rdx 呼叫從 19 變 0,理論上是 β.2 該大勝的場景。但 Haiku 拿到 rails-dsl 一次給回的完整答案後,撞到「cwd 在 /Users/liu/ruby_indexer、但 project_root 在 /Users/liu/sunnyfounder/e_trading」的工具路徑衝突,直接拒絕作答 → <code>bad</code>。<strong>給太多 high-confidence 上下文,弱模型反而被看似 instruction 矛盾的訊號搞亂。</strong></p>
+      <p><strong>強模型的二次 trade-off</strong>:Codex machine 全綠(case-1 delegate 鏈 recall 0.64→1.00 +36pp、ctx −45%),但同樣的「rails-dsl 給高 confidence Rails 知識」上下文,在 case-7 polymorphic silent bug 題上讓 Codex 把 <code>'income_expense'</code> <i>解讀</i>成 <code>ElectricityAccounting::ChargesCalculation::FixedCharge::Models::IncomeExpense</code>(named with high confidence)→ explain-away silent bug → <code>part → bad</code>。在 case-4/4A 計數題上 total 從 ~100/145 暴跌到 41/58(−60%),疑似 top_k 截斷或 false-confidence「我都看完了」early termination。</p>
+      <p><strong>三個 caveat</strong>:① 全程 <strong>n=1</strong>,單次變異大,所有結論都是方向訊號。② β.2 的 rails-dsl 對「Rails-aware 但非 Rails-knowledge 黑洞」題型(case-8/10 Haiku 略升)有閃光,但 main path(case-1/13)反而受傷。③ Opus 的 case-7 win 是真的、但同模型 case-10 也從 ok 退到 part —— 個案性 win 不能歸納成「Opus 適合 β.2」,需要更多 N。</p>
+    </div>
+  </div>
+</section>
+
+<section id="design">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">01</span><h2>從 V4-α 到 V4-β.2:為什麼加 rails-dsl backend</h2></div>
+    <p class="sub">V4-α 把 routing 拉到外層 MCP 是對的方向,但只有 <code>rubydex</code>(結構 AST)+ <code>ripgrep</code>(字串)兩個 backend,沒兌現「多工具協同 = 各擅其場」的承諾 —— 像把人請來開店、只擺了兩個架。β.2 補的第三個 backend 是 rails-dsl。</p>
+    <h3>rails-dsl backend 是什麼</h3>
+    <p>靜態 prism AST 掃 Rails 慣用 DSL,索引兩類資訊:</p>
+    <ul style="margin:0 0 14px 18px;line-height:1.85">
+      <li><b>Routes</b>:<code>resources / get / post / namespace</code> 等宣告,索引「URL helper ↔ controller#action ↔ http verb + path」三向映射。</li>
+      <li><b>ActiveRecord 關聯</b>:<code>has_many / belongs_to / has_one</code>,特別標出 <code>polymorphic: true</code> 跟 <code>class_name: '...'</code> 顯式對應。</li>
+    </ul>
+    <p>另外搭配兩個輔助升級:<code>tokenizing query scorer</code>(對 query 分詞、跟 backend 候選作 token-level 相關性排序,而不是純名稱字面)、<code>hint vocabulary</code>(把 <code>route / association / polymorphic / dsl</code> 等 hint 接上 backend dispatch)。</p>
+
+    <h3>為什麼選 rails-dsl 而不是其他</h3>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>backend 候選</th><th>能補的盲區</th><th>實作難度</th><th>選了沒</th></tr></thead>
+        <tbody>
+          <tr><td class="tech">rails-dsl(靜態)</td><td class="tech">routes 反查、polymorphic 關聯、class_name string</td><td class="tech">中(prism AST + 慣用 DSL 樣板)</td><td class="cid">✓ β.2</td></tr>
+          <tr><td class="tech">runtime introspection(rails console + reflection)</td><td class="tech">constantize 真實解析、AASM event、hash dispatch 求值</td><td class="tech">高(load Rails app + 隔離)</td><td class="tech">V4-γ 評估、本輪未做</td></tr>
+          <tr><td class="tech">ruby-lsp-rails(完整 LSP)</td><td class="tech">所有 Rails 知識(routes / model / view)</td><td class="tech">高(LSP 啟動 + 接 MCP)</td><td class="tech">未做(LSP 啟動成本對 benchmark 太重)</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout acc"><span class="lab">本輪實驗 5 條件</span><p>把 <b>V2-grep</b>(純 LLM)、<b>V2-rdx</b>(rubydex 工具箱)、<b>V3-sel</b>(prompt selector)、<b>V4-α</b>(orchestrator,僅 rubydex+rg)、<b>V4-β.2</b>(orchestrator,加 rails-dsl + tokenizing scorer + hint vocab)五臂並排。前四個沿用 V4 報告數據,第五個本輪新跑。<code>ORCH_ENABLE_RAILS_DSL=1</code> 環境變數開啟 backend。Claude <code>--strict-mcp-config</code> / Codex <code>--ignore-user-config</code> 隔離。Value 9 題每題同 judge 重判 V4-α + V4-β.2 兩臂(對齊 strictness、附 V4-α 錨點驗 drift)。</p></div>
+  </div>
+</section>
+
+<section id="main">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">02</span><h2>機器 6 題主表:5 臂並排 × 3 模型 × file-recall</h2></div>
+    <p class="sub">數字 = file-recall(0~1)、小字 = rubydex/backend 呼叫總次數。第 5 欄(β.2,加粗框)= 本輪新加的 V4-β.2。看每模型 5 欄由左到右的趨勢線,特別注意第 4→5 欄的變化(α→β.2)。</p>
+    <div class="legend">
+      <span><i class="c-good"></i>recall ≥.999</span>
+      <span><i class="c-part"></i>0.8–.99</span>
+      <span><i class="c-miss2"></i>0.6–.79</span>
+      <span><i class="c-bad"></i>&lt;.6</span>
+      <span style="margin-left:auto">小字 = backend 呼叫次數</span>
+    </div>
+    <div class="tbl-wrap">
+      <table class="hm" id="mainTable">
+        <thead>
+          <tr><th rowspan="2">case</th><th rowspan="2">題型</th>
+            <th class="grp" colspan="5">Haiku 4.5</th>
+            <th class="grp" colspan="5">Opus 4.7-low</th>
+            <th class="grp" colspan="5">GPT-5.5</th></tr>
+          <tr>
+            <th class="sub grp">grep</th><th class="sub">rdx</th><th class="sub">sel</th><th class="sub">α</th><th class="sub" style="background:#e6f0ee">β.2</th>
+            <th class="sub grp">grep</th><th class="sub">rdx</th><th class="sub">sel</th><th class="sub">α</th><th class="sub" style="background:#e6f0ee">β.2</th>
+            <th class="sub grp">grep</th><th class="sub">rdx</th><th class="sub">sel</th><th class="sub">α</th><th class="sub" style="background:#e6f0ee">β.2</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p class="note" style="margin-top:14px">讀法:看每組第 4→5 欄(α→β.2)的變化方向 —— <b>Codex case-1 從 0.64 衝到 1.00、case-13 從 1.0 維持、case-2/5/6/14 全 1.0</b> 是 β.2 主要的 Codex machine 勝場;<b>Haiku case-1 從 1.00 退到 0.71、case-13 從 0.75 退到 0.25</b> 是 β.2 對 Haiku machine 的傷害集中區。Opus 個案小升小降,主要 net positive 來自 case-2(0.83→1.0)、case-14(0.88→1.0)。</p>
+  </div>
+</section>
+
+<section id="value">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">03</span><h2>value 9 題 quality score:三模型 × 5 臂並排</h2></div>
+    <p class="sub">9 個 value 題的判讀品質分數(ok=1 / part=.5 / bad=0,滿分 9),五條件並排。看每模型最後一條(β.2)的相對位置 —— 三模型分裂:<b>Haiku 6.0(↓1.0)、Opus 8.5(↑0.5)、Codex 6.0(↓2.5)</b>。Codex 的暴跌是「machine 全綠的代價」,Opus 的小升靠 case-7 silent bug 救起,Haiku 的下跌是主場 case-11 catastrophic 拖累。</p>
+    <div class="bars" id="valueBars" style="margin:18px 0 6px"></div>
+    <p class="note">9 題中,β.2 相對 α 變化:<b>升的</b> Opus·case-7(bad→ok,+1)、Haiku·case-8(part→ok,+0.5)、Haiku·case-10(part→ok,+0.5);<b>降的</b> Haiku·case-4(ok→part,−0.5)、Haiku·case-4A(ok→part,−0.5)、Haiku·case-11(ok→bad,−1)、Opus·case-10(ok→part,−0.5)、Codex·case-4(ok→bad,−1)、Codex·case-4A(ok→bad,−1)、Codex·case-7(part→bad,−0.5)。<b>5 個動,5 個降、3 個升</b> —— 但降的權重(計數題、主場題)比升的(silent bug 救起)大,且分佈不均(Codex 全踩在 bad 那邊)。</p>
+  </div>
+</section>
+
+<section id="ctx">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">04</span><h2>機器 6 題 aggregate ctx:5 臂並排</h2></div>
+    <p class="sub">6 機器題 aggregate context token(in+cache+out,K),五條件並排。看 β.2 列相對 α 的位移:<b>Codex −30%(4024K→2825K)、Haiku −21%(4165K→3310K)、Opus +27%(1395K→1770K)</b>。Codex 的 ctx 大降跟 machine 全綠是同一個現象 —— rails-dsl 給的 Rails-knowledge backend 直接命中、不用反覆換 query。Opus ctx 反向是因為它在 case-2/5/14 對 backend 結果再呼叫 rubydex 二次驗證。</p>
+    <div class="bars" id="ctxBars" style="margin:18px 0 6px"></div>
+    <p class="note">β.2 並沒有解決「強模型 ctx 負擔」—— Codex 雖然從 ×9.7(α 對 V3sel)降到 ×7.5,仍遠高於 V3sel 基線。<b>真實的故事是「Codex 的 ctx 砍法靠 rails-dsl 命中、Haiku 的 ctx 砍法靠 case-11 拒絕作答(用 0 換 ctx)」</b>—— Haiku case-11 ctx 從 1209K 變 80K 看起來省、實際是 quality bad。把 ctx 跟 quality 同時看才對,單看 ctx 會 over-claim 效率提升。</p>
+  </div>
+</section>
+
+<section id="split">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">05</span><h2>三模型相依 split:同一個 backend、三種結果</h2></div>
+    <p class="sub">這節是本報告主軸。同一個 rails-dsl backend、同樣 ORCH_ENABLE_RAILS_DSL=1,三模型結果分裂到值得各寫一個 verdict。</p>
+
+    <div class="model-card win" style="margin-top:18px">
+      <div class="head">
+        <div class="vname">Codex / GPT-5.5</div>
+        <div class="vsub">強模型</div>
+        <div class="verdict">⚠ 大勝 ⇄ 大降 雙刃劍</div>
+        <div class="miniline" style="margin-top:14px">machine recall +14pp 全綠<br>machine ctx −30%<br><br>value −2.5(case-4/4A/7)</div>
+      </div>
+      <div class="body">
+        <p><b>Machine 大勝</b>:file-recall 0.857 → <b>1.000</b>(滿分),aggregate ctx 4024K → 2825K(−30%)。最大個案是 <b>case-1 delegate 鏈</b>:0.64 → 1.0(+36pp)、ctx 984K → 537K(−45%)、rdx 80 → 44(−45%)。rails-dsl backend 直接命中 has_one + delegate 關聯,Codex 不需要反覆換 query 湊 refs。case-13 hash dispatch、case-14 rename 也都維持 1.0。這是 rails-dsl 對強模型「Rails-aware locate 題」的純贏。</p>
+        <p><b>Value 大降</b>:judge score 8.5 → <b>6.0</b>(−2.5,三題崩盤)。<b>case-4</b> invoice-fqn:total 98 → 41(−60%),Codex 只列範例行而沒展開 spec 檔案多行(<code>void_current_invoice_spec.rb</code> 12 行只列 1 行等)。<b>case-4A</b> invoice-no-fqn:total 148 → 58(−60%),4 buckets 全部嚴重 undercounted,類別都對但每類數字崩。可能 top_k truncation 或 early termination 在 orchestrator path 觸發。<b>case-7</b> silent bug:rails-dsl 餵的 polymorphic 上下文把 <code>income_expense</code> <i>解讀</i>成 <code>ElectricityAccounting::ChargesCalculation::FixedCharge::Models::IncomeExpense</code>(named with high confidence),反而「explain away」了 silent bug。其他真 bug(Revenue::Due 等)有列、但漏 income_expense 是答案核心。</p>
+        <p><b>解讀</b>:β.2 對 Codex 是「machine 換 value」trade-off,不是純優化。rails-dsl 給的 Rails-knowledge 讓它精準 routing(找對檔)+ 同樣的高 confidence 上下文讓它在窮舉計數題 early-terminate、在 silent bug 推理題 explain-away。<b>Rails-knowledge 是雙刃劍</b>。</p>
+      </div>
+    </div>
+
+    <div class="model-card mixed">
+      <div class="head">
+        <div class="vname">Opus 4.7-low</div>
+        <div class="vsub">中模型</div>
+        <div class="verdict">⊕ 中性偏正 / 個案勝</div>
+        <div class="miniline" style="margin-top:14px">machine recall +4pp<br>machine ctx +27%<br><br>value +0.5(case-7 救起)</div>
+      </div>
+      <div class="body">
+        <p><b>Machine 中性偏正</b>:file-recall 0.845 → 0.887(+4pp)。case-2 AASM(0.83→1.0)、case-14 rename(0.88→1.0)、case-5/6/13/14 全 1.0 或維持。但 case-1 delegate 反向(0.86→0.57),跟 Codex 那邊衝突 → backend 對 delegate 鏈題不是普遍 win。ctx 1395K → 1770K(+27%),Opus 拿到 backend 答案後常再呼叫 rubydex 二次驗證,所以 ctx 反增。</p>
+        <p><b>Value 個案性升</b>:judge 8.0 → 8.5(+0.5),完全靠 <b>case-7 silent bug 大躍進</b>(bad→ok,+2 跳)。Opus 明確套用 rails-dsl 提供的 <code>belongs_to :source, polymorphic</code> 上下文,把 source_type 分成「A 類真 polymorphic」vs「B 類 sentinel by design」兩組,正確把 <code>income_expense</code> 歸入 silent bug 候選,<b>bonus</b> 還抓到 <code>'period'</code> / 裸 <code>'ElectricBill'</code> 也是 production silent bug。rails-dsl polymorphic backend 在 Opus 身上是純贏。</p>
+        <p>但 case-10 反向(ok→part):Opus 漏列 <code>_aasm_log.html.slim:22</code>(to_state)跟 <code>_order.html.slim:210</code>(to_state)兩個 mirror 行,只列了 from_state 那組。5 個動態 sites 漏 2 個。<b>n=1 random drift,但 part 是真的</b> —— 不能歸納「Opus 適合 β.2」。</p>
+      </div>
+    </div>
+
+    <div class="model-card lose">
+      <div class="head">
+        <div class="vname">Haiku 4.5</div>
+        <div class="vsub">弱模型</div>
+        <div class="verdict">✗ 雙降</div>
+        <div class="miniline" style="margin-top:14px">machine recall −13pp<br>machine ctx −21%<br><br>value −1.0(case-11 主場崩)</div>
+      </div>
+      <div class="body">
+        <p><b>Machine 大降</b>:file-recall 0.958 → 0.827(−13pp)。case-1 delegate(1.0→0.71)、case-13 hash dispatch(0.75→0.25)是主要傷害區。Haiku 拿到 rails-dsl backend 結果後似乎太信、不再用其他通道補,單一通道的失誤直接反映在 recall。ctx −21% 看似省、實際是「拿到 1-shot 答案就停」的副作用。</p>
+        <p><b>Value 雙降</b>:judge 7.0 → 6.0(−1.0)。<b>case-11 routes-helper 是 β.2 設計缺陷的具體展現</b>:這題本是 rails-dsl 主場,context 從 1209K 砍到 80K、rdx 19→0,理論上應該大勝。但 Haiku 拿到 rails-dsl 1-shot 答案後仍想自己 Read 檔案驗證,撞到「cwd 在 <code>/Users/liu/ruby_indexer</code>、project_root 在 <code>/Users/liu/sunnyfounder/e_trading</code>」的工具路徑不一致,<b>直接拒絕作答</b>(回說「不能 access」)→ <code>ok → bad</code>。最戲劇的反諷:<b>主場題在 backend 完美命中時、模型自己 bail。</b></p>
+        <p><b>但有閃光點</b>:case-8 短形式↔FQN(22→25 part→ok)、case-10 i18n(part→ok)兩個 Rails-aware 題型小升。case-8 救起兩處 <code>instance_double</code> string ref;case-10 明確列出兩個 slim 檔的 <code>:21,:22</code> 跟 <code>:209,:210</code> 兩對 from_state/to_state,5 個動態 sites 全包。<b>兩處進步抵不過 case-11 的 catastrophic drop</b>。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="fit">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">06</span><h2>對誰值得 + 該怎麼開</h2></div>
+    <p class="sub">把 §05 收成 actionable:對哪個模型、哪些題型該開 rails-dsl,哪些不該。</p>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>模型</th><th>machine 結論</th><th>value 結論</th><th>淨判斷 / 建議</th></tr></thead>
+        <tbody>
+          <tr><td class="cid">Codex 強</td><td class="num">✅ recall +14pp 全綠 / ctx −30%</td><td class="num">❌ judge −2.5(計數 + silent bug 全崩)</td><td class="tech">⚠️ <b>看任務目標決定</b> —— 純「找哪些檔」型(machine)開,「列舉 / 計數 / 推理 silent bug」型(value)別開</td></tr>
+          <tr><td class="cid">Opus 中</td><td class="num">≈ recall +4pp / ctx +27%</td><td class="num">+ judge +0.5(個案 case-7 升)</td><td class="tech">⊕ <b>中性偏正、可開</b> —— polymorphic 推理題明確 win,其他 wash。但 case-10 反向 part 是真的、看更多 N 才敢推</td></tr>
+          <tr><td class="cid">Haiku 弱</td><td class="num">❌ recall −13pp / ctx −21%(壞效率)</td><td class="num">❌ judge −1(主場 case-11 拒絕作答)</td><td class="tech">✗ <b>不該開</b> —— main path 受傷,case-8/10 兩處 Rails-aware 閃光抵不過 case-1/11/13 雙降</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout warn" style="margin-top:18px"><span class="lab">關鍵 takeaway</span><p><b>β.2 不是 universal 升級,是 model-dependent 而且強模型還是 machine ↔ value 二次 trade-off</b>。Codex 上開 β.2 像在「強模型送 RoutingPower-up、但 reasoning 變懶」之間做選擇 —— machine 任務開、value 任務關。Opus 上 β.2 拿到 case-7 polymorphic 救起的個案勝、其他 wash。Haiku 上不該開。<b>實務建議:按題型 + 模型 selectively enabled,而非無條件 on。</b></p></div>
+
+    <h3 style="margin-top:30px">該怎麼 selectively 開(實作建議)</h3>
+    <ul style="margin:0 0 14px 18px;line-height:1.85">
+      <li><b>勝場(對 Codex / Opus 開)</b>:Rails-aware locate 題 —— delegate 鏈、routes helper、polymorphic 關聯、ActiveRecord has_many/belongs_to 反查。case-1/11 / case-7 silent bug(對 Opus)是典型。</li>
+      <li><b>敗場(對 Codex 關)</b>:窮舉計數題 —— case-4/4A/8 這類「列出所有 X 引用 + 總數」題。rails-dsl 給的「Rails-knowledge 命中」上下文讓 Codex 早收手,改回 V3-sel / V2-grep 拿全候選。</li>
+      <li><b>敗場(對 Haiku 全關)</b>:Haiku 對 1-shot high-confidence 答案敏感(case-11 主場 bail),弱模型反而需要自己一步步搜出來的 ctx-rich 過程。直接用 V3-sel。</li>
+      <li><b>長期</b>:讓 LLM 在 prompt 自帶 capability hint(強/中/弱),orchestrator 按 hint 動態決定要不要 enable rails-dsl —— 跟 V4-α 結論一致(IA locate 也是 model-dependent),都該升級成 model-aware classifier。</li>
+    </ul>
+  </div>
+</section>
+
+<section id="stories">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">07</span><h2>兩個 case 故事:Haiku case-11 反諷 + Codex case-7 explain-away</h2></div>
+    <p class="sub">5 個變化最大的個案中,挑兩個最能說明 β.2 「給太多 high-confidence 上下文反而傷」的:Haiku case-11 主場 catastrophic、Codex case-7 silent bug explain-away。</p>
+
+    <h3>① Haiku case-11 routes-helper:主場 1-shot 答案後拒絕作答</h3>
+    <div class="tbl-wrap" style="margin:0 0 14px">
+      <table>
+        <thead><tr><th>arm</th><th>judge</th><th>ctx</th><th>rdx calls</th><th>reads</th></tr></thead>
+        <tbody>
+          <tr><td>V4-α</td><td><span class="c-ok" style="padding:2px 7px;border-radius:4px">ok</span></td><td class="num">1209K</td><td class="num">19</td><td class="num">8</td></tr>
+          <tr style="background:#f7f2e8"><td><b>V4-β.2</b></td><td><span class="c-bad" style="padding:2px 7px;border-radius:4px">bad</span></td><td class="num"><b>80K</b></td><td class="num"><b>0</b></td><td class="num">0</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>case-11 是「給 controller#action,反查所有 routes / URL helper / link_to 呼叫點」題 —— 純 Rails routes DSL 題,本就是 rails-dsl backend 該大勝的<b>指定主場</b>。看數字:ctx 從 1209K 暴砍到 80K、rdx 從 19 變 0、reads 從 8 變 0 —— backend 一次給回完整答案,Haiku 連 1 個 rubydex 呼叫都沒打、連 1 個檔都沒讀。理論上這是 β.2 教科書級別的勝利。</p>
+    <p>但 Haiku 接著做了一件出乎意料的事:它仍想自己 Read 檔案驗證,然後撞到工具的 cwd 跟 project_root 不一致(cwd 在 <code>/Users/liu/ruby_indexer</code>、project_root 在 <code>/Users/liu/sunnyfounder/e_trading</code>),回了「不能從 cwd access project_root」的 message,<b>直接拒絕作答</b>。</p>
+    <div class="callout"><span class="lab">這是 β.2 設計缺陷的具體展現</span><p>rails-dsl 給 1-shot high-confidence 答案後,弱模型會被「project root 明確、但我的工具 cwd 不對」這種看似 instruction 衝突搞亂(它沒意識到 backend 已給了答案、自己再驗證會撞 cwd)。<b>V4-α 的 1209K-ctx / 19 calls 答案 Haiku 自己一步步搜出來、沒有這個衝突</b> —— 過程更貴、但結果是 ok。</p></div>
+
+    <h3 style="margin-top:30px">② Codex case-7 source_type silent bug:rails-dsl 把它「解讀」掉</h3>
+    <div class="tbl-wrap" style="margin:0 0 14px">
+      <table>
+        <thead><tr><th>arm</th><th>judge</th><th>ctx</th><th>rdx calls</th><th>reads</th></tr></thead>
+        <tbody>
+          <tr><td>V4-α</td><td><span class="c-part" style="padding:2px 7px;border-radius:4px">part</span></td><td class="num">741K</td><td class="num">33</td><td class="num">17</td></tr>
+          <tr style="background:#f7f2e8"><td><b>V4-β.2</b></td><td><span class="c-bad" style="padding:2px 7px;border-radius:4px">bad</span></td><td class="num">1417K</td><td class="num">56</td><td class="num">0</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>case-7 是「找 production code 裡 polymorphic <code>source_type</code> 字串裡的 silent bug —— 字串會被 <code>classify.constantize</code> 解到頂層常數,但對應的真實 model 在 namespace 裡,於是 production runtime 會 RuntimeError」題。<b>答案核心</b>是 <code>'income_expense'</code> —— 它 constantize 到頂層 <code>IncomeExpense</code>(不存在),但有個 namespaced model <code>ElectricityAccounting::ChargesCalculation::FixedCharge::Models::IncomeExpense</code> 確實存在,只是不在頂層 → silent bug。</p>
+    <p>Codex 在 V4-α 給了 part(列了 <code>Revenue::Due</code> 等真 bug、漏 income_expense)。換 β.2 後,rails-dsl 餵的 polymorphic 關聯上下文裡顯式列出了 <code>ElectricityAccounting::ChargesCalculation::FixedCharge::Models::IncomeExpense</code> 這個 namespaced model 的存在,於是 Codex「合理化」掉:既然有這個 model、那 <code>'income_expense'</code> 對應的就是它(named with high confidence),不是 bug。</p>
+    <div class="callout"><span class="lab">這是 rails-knowledge 反向</span><p>Codex 用 rails-dsl 給的 namespaced model 上下文把 silent bug <b>explain away</b> —— backend 給的不是錯資訊,而是「太多正確但 misleading 的相關上下文」,讓強模型在 high-confidence 下對「constantize 解的是<b>頂層</b>常數、不是任何 namespaced 同名類」這個 Rails 真實 runtime 行為失察。<b>對 Opus(中模型)同樣的上下文反而救起來</b>(Opus bad→ok),因為它走「A 類真 polymorphic vs B 類 sentinel」的分組推理路徑、明確指認 income_expense 是 silent bug。同 backend、同題、不同推理風格 → 反方向結論。</p></div>
+  </div>
+</section>
+
+<section id="verdict">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">08</span><h2>結論 + V4-γ go/no-go</h2></div>
+
+    <p>① <b>rails-dsl backend 真的「工作」</b>:對 Rails routes、polymorphic 關聯這類 DSL 知識題,backend 一次命中 + ctx 砍法明顯 —— Codex case-1 delegate(+36pp / −45% ctx)、case-11 routes(Codex 1.0 / Opus 1.0)、Opus case-7 polymorphic(bad→ok)都是真實的勝場。<b>不是「沒效果」,是「有效果但代價深」</b>。</p>
+    <p>② <b>代價是 model-dependent + 題型相依的雙重 trade-off</b>:同樣的 backend、同樣的高 confidence Rails 知識上下文,對 Codex 在 machine 是大勝、在 value 是大降(case-4/4A 計數 −60%、case-7 explain away);對 Opus 個案性勝(case-7);對 Haiku 雙降(主場 case-11 拒絕作答 + main path 受傷)。<b>強模型還多一層 machine ↔ value 二次拉鋸,因為「Rails-knowledge 上下文」對 locate 任務是助攻、對 enumeration 與 silent-bug-reasoning 任務是干擾</b>。</p>
+    <p>③ <b>case-11 反諷揭露 β.2 真正的設計缺陷</b>:不是 backend 知識不對,是「給太多 high-confidence 1-shot 上下文,弱模型反而被看似 instruction 衝突的訊號(project_root 在 X 但我 cwd 在 Y)搞亂,直接 bail」。V4-α 的「LLM 自己一步步搜」反而沒這個 surface。<b>backend 越強、prompt-to-LLM 介面越要小心高 confidence 訊號跟 LLM 自我驗證之間的張力</b>。</p>
+    <p>④ <b>V4-β.2 真實的價值是 model + 題型雙重 routing,不是 backend 本身</b>。光裝上 rails-dsl 並打開 <code>ORCH_ENABLE_RAILS_DSL=1</code> 不會 universal 升級;需要 classifier 按「模型強弱 + 題型 locate vs count vs reasoning」動態決定要不要 enable rails-dsl。跟 V4-α 結論「IA locate 是 model-dependent」是同一個 pattern 的延伸 —— 整個 V4 系列的 actionable 都是「外層 routing 需要 capability-aware」。</p>
+
+    <div class="callout warn"><span class="lab">V4-γ runtime backend go/no-go</span><p>本輪也順帶釐清 V4-γ(runtime introspection backend,load Rails app 做 reflection)的可行性。case-7 silent bug 是 V4-γ 該大勝的指定主場(只有真實 runtime 知道 constantize 解到哪)—— 但 β.2 結果<b>矛盾</b>:Opus 升(rails-dsl polymorphic 上下文有用)、Codex 降(同樣上下文 explain away)。若 γ 給更強的「runtime 確認 income_expense 在頂層不存在」訊號,理論上 Codex 該被強訊號逼回正確答案;但 β.2 case-7 經驗顯示<b>強模型遇到強 backend 訊號可能再 explain away(找個其他原因合理化)、不是直接服從</b>。實作成本(Rails app 啟動 + 隔離)+ 不確定能不能解決 explain-away → <b>V4-γ 仍 no-go</b>,跟 α 報告結論一致。下一步該是 model-aware classifier(β.3?)而不是再多裝 backend。</p></div>
+
+    <div class="callout"><span class="lab">如何看這些數字</span><p>每格只跑<b>一次(n=1)</b>,單次變異很大。所有結論都是<b>方向性訊號</b>;單題的小差異(尤其 ±1 個 part/ok、或 case-10 Opus ok→part 這類 random drift)別當定論。要可發布的強主張需每格 N 次取中位。<b>本報告對 β.2 的判斷「強模型雙刃劍 + Haiku 雙降」的方向訊號夠強</b>(Codex value −2.5、Haiku case-11 catastrophic 都不是 ±1 邊界),但模型內個案的具體解讀(case-10 Opus 反向、Haiku case-8 救起)需要更多 N。</p></div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="anon">
+      <b>方法 & 可重現</b><br>
+      6 機器題用 <code>automation/answer_keys_machine/*.files</code> ground-truth 算 file-level recall(對版面免疫)。9 value 題對 <code>results/answer_key/case-*.md</code> 由 per-case 單一 judge 判 ok/part/bad(recall-first:漏報重罰、過報輕罰);V4-β.2 每題同 judge 重判 V4-α + V4-β.2 兩臂、附 V4-α 錨點驗 strictness drift。orchestrator = 外層 MCP server(<code>rubydex_orchestrator/</code>,單一 <code>find_code</code> 工具 + rule-based intent classifier + rails-dsl prism AST backend),<code>ORCH_ENABLE_RAILS_DSL=1</code> 開啟。benchmark 用 <code>run_all_orchestrator.sh</code>(Claude <code>--strict-mcp-config</code>、Codex <code>--ignore-user-config</code> 隔離);V2/V3/V4-α 四臂沿用 V4 報告乾淨數據。彙整 <code>v4b_compare_aggregate.py</code>,co-judge 存 <code>v4b_value_cojudge.md</code>。
+    </div>
+    <p>目標為三個生產 Rails 專案(已匿名)。題名與符號為中性化代稱。Rubydex Benchmark V4-β.2 · 2026-05-31 · n=1,看方向不看小數點。</p>
+  </div>
+</footer>
+
+<script>
+const D = {"machine":[{"id":"1","label":"has_one + delegate 鏈","kind":"struct","models":{"haiku":{"V2grep":{"recall":0.571,"reads":1,"rdx":0,"ctx":120},"V2rdx":{"recall":0.786,"reads":1,"rdx":1,"ctx":202},"V3sel":{"recall":0.643,"reads":1,"rdx":0,"ctx":611},"V4orch":{"recall":1.0,"ctx":178,"reads":0,"rdx":4},"V4orch_v4b":{"recall":0.714,"ctx":381,"reads":0,"rdx":9}},"opus-low":{"V2grep":{"recall":0.643,"reads":3,"rdx":0,"ctx":142},"V2rdx":{"recall":0.643,"reads":9,"rdx":1,"ctx":433},"V3sel":{"recall":0.643,"reads":7,"rdx":0,"ctx":288},"V4orch":{"recall":0.857,"ctx":167,"reads":0,"rdx":6},"V4orch_v4b":{"recall":0.571,"ctx":323,"reads":4,"rdx":21}},"codex-gpt-5.5":{"V2grep":{"recall":0.643,"reads":17,"rdx":0,"ctx":118},"V2rdx":{"recall":1.0,"reads":22,"rdx":3,"ctx":92},"V3sel":{"recall":0.643,"reads":36,"rdx":4,"ctx":89},"V4orch":{"recall":0.643,"ctx":984,"reads":0,"rdx":80},"V4orch_v4b":{"recall":1.0,"ctx":537,"reads":0,"rdx":44}}}},{"id":"2","label":"AASM 動態 event","kind":"struct","models":{"haiku":{"V2grep":{"recall":0.833,"reads":0,"rdx":0,"ctx":69},"V2rdx":{"recall":0.917,"reads":5,"rdx":4,"ctx":487},"V3sel":{"recall":1.0,"reads":7,"rdx":0,"ctx":826},"V4orch":{"recall":1.0,"ctx":2093,"reads":10,"rdx":10},"V4orch_v4b":{"recall":1.0,"ctx":132,"reads":1,"rdx":0}},"opus-low":{"V2grep":{"recall":0.833,"reads":0,"rdx":0,"ctx":209},"V2rdx":{"recall":0.917,"reads":6,"rdx":3,"ctx":513},"V3sel":{"recall":0.917,"reads":6,"rdx":0,"ctx":414},"V4orch":{"recall":0.833,"ctx":559,"reads":5,"rdx":24},"V4orch_v4b":{"recall":1.0,"ctx":533,"reads":4,"rdx":28}},"codex-gpt-5.5":{"V2grep":{"recall":1.0,"reads":21,"rdx":0,"ctx":95},"V2rdx":{"recall":0.833,"reads":13,"rdx":0,"ctx":152},"V3sel":{"recall":0.917,"reads":13,"rdx":6,"ctx":71},"V4orch":{"recall":1.0,"ctx":675,"reads":18,"rdx":51},"V4orch_v4b":{"recall":1.0,"ctx":1015,"reads":30,"rdx":28}}}},{"id":"5","label":"Sidekiq YAML 字串","kind":"blind","models":{"haiku":{"V2grep":{"recall":1.0,"reads":1,"rdx":0,"ctx":128},"V2rdx":{"recall":1.0,"reads":1,"rdx":3,"ctx":414},"V3sel":{"recall":1.0,"reads":3,"rdx":0,"ctx":385},"V4orch":{"recall":1.0,"ctx":349,"reads":1,"rdx":12},"V4orch_v4b":{"recall":1.0,"ctx":669,"reads":5,"rdx":11}},"opus-low":{"V2grep":{"recall":1.0,"reads":2,"rdx":0,"ctx":63},"V2rdx":{"recall":1.0,"reads":1,"rdx":2,"ctx":119},"V3sel":{"recall":1.0,"reads":2,"rdx":1,"ctx":81},"V4orch":{"recall":1.0,"ctx":158,"reads":1,"rdx":3},"V4orch_v4b":{"recall":1.0,"ctx":187,"reads":1,"rdx":3}},"codex-gpt-5.5":{"V2grep":{"recall":1.0,"reads":2,"rdx":0,"ctx":8},"V2rdx":{"recall":1.0,"reads":3,"rdx":2,"ctx":24},"V3sel":{"recall":1.0,"reads":2,"rdx":3,"ctx":33},"V4orch":{"recall":0.5,"ctx":83,"reads":0,"rdx":13},"V4orch_v4b":{"recall":1.0,"ctx":86,"reads":0,"rdx":15}}}},{"id":"6","label":"Object monkey-patch","kind":"blind","models":{"haiku":{"V2grep":{"recall":1.0,"reads":1,"rdx":0,"ctx":96},"V2rdx":{"recall":1.0,"reads":1,"rdx":2,"ctx":161},"V3sel":{"recall":1.0,"reads":2,"rdx":2,"ctx":340},"V4orch":{"recall":1.0,"ctx":122,"reads":0,"rdx":1},"V4orch_v4b":{"recall":1.0,"ctx":328,"reads":0,"rdx":6}},"opus-low":{"V2grep":{"recall":1.0,"reads":1,"rdx":0,"ctx":48},"V2rdx":{"recall":1.0,"reads":1,"rdx":1,"ctx":58},"V3sel":{"recall":1.0,"reads":1,"rdx":0,"ctx":76},"V4orch":{"recall":1.0,"ctx":106,"reads":1,"rdx":11},"V4orch_v4b":{"recall":1.0,"ctx":183,"reads":1,"rdx":3}},"codex-gpt-5.5":{"V2grep":{"recall":1.0,"reads":2,"rdx":0,"ctx":3},"V2rdx":{"recall":1.0,"reads":2,"rdx":3,"ctx":23},"V3sel":{"recall":1.0,"reads":2,"rdx":6,"ctx":21},"V4orch":{"recall":1.0,"ctx":121,"reads":0,"rdx":7},"V4orch_v4b":{"recall":1.0,"ctx":75,"reads":0,"rdx":11}}}},{"id":"13","label":"Hash dispatch 表","kind":"blind","models":{"haiku":{"V2grep":{"recall":0.5,"reads":4,"rdx":0,"ctx":720},"V2rdx":{"recall":1.0,"reads":7,"rdx":0,"ctx":1272},"V3sel":{"recall":1.0,"reads":8,"rdx":0,"ctx":1231},"V4orch":{"recall":0.75,"ctx":832,"reads":6,"rdx":19},"V4orch_v4b":{"recall":0.25,"ctx":1190,"reads":6,"rdx":30}},"opus-low":{"V2grep":{"recall":1.0,"reads":1,"rdx":0,"ctx":71},"V2rdx":{"recall":1.0,"reads":2,"rdx":4,"ctx":289},"V3sel":{"recall":0.75,"reads":5,"rdx":1,"ctx":182},"V4orch":{"recall":0.5,"ctx":223,"reads":4,"rdx":14},"V4orch_v4b":{"recall":0.75,"ctx":369,"reads":3,"rdx":10}},"codex-gpt-5.5":{"V2grep":{"recall":1.0,"reads":14,"rdx":0,"ctx":108},"V2rdx":{"recall":1.0,"reads":13,"rdx":7,"ctx":73},"V3sel":{"recall":1.0,"reads":12,"rdx":4,"ctx":104},"V4orch":{"recall":1.0,"ctx":1412,"reads":10,"rdx":40},"V4orch_v4b":{"recall":1.0,"ctx":686,"reads":26,"rdx":33}}}},{"id":"14","label":"rename 影響面","kind":"struct","models":{"haiku":{"V2grep":{"recall":1.0,"reads":17,"rdx":0,"ctx":659},"V2rdx":{"recall":0.882,"reads":0,"rdx":2,"ctx":80},"V3sel":{"recall":1.0,"reads":2,"rdx":2,"ctx":223},"V4orch":{"recall":1.0,"ctx":591,"reads":0,"rdx":16},"V4orch_v4b":{"recall":1.0,"ctx":610,"reads":11,"rdx":8}},"opus-low":{"V2grep":{"recall":1.0,"reads":1,"rdx":0,"ctx":81},"V2rdx":{"recall":1.0,"reads":0,"rdx":2,"ctx":86},"V3sel":{"recall":1.0,"reads":1,"rdx":1,"ctx":96},"V4orch":{"recall":0.882,"ctx":182,"reads":3,"rdx":2},"V4orch_v4b":{"recall":1.0,"ctx":175,"reads":4,"rdx":2}},"codex-gpt-5.5":{"V2grep":{"recall":1.0,"reads":3,"rdx":0,"ctx":83},"V2rdx":{"recall":1.0,"reads":0,"rdx":2,"ctx":44},"V3sel":{"recall":1.0,"reads":4,"rdx":4,"ctx":60},"V4orch":{"recall":1.0,"ctx":749,"reads":0,"rdx":72},"V4orch_v4b":{"recall":1.0,"ctx":426,"reads":6,"rdx":43}}}}],"value":[{"id":"3","label":"class_eval 動態生方法","kind":"blind","models":{"haiku":{"V2grep":{"judge":"part","reads":1,"rdx":0,"ctx":99},"V2rdx":{"judge":"part","reads":1,"rdx":2,"ctx":158},"V3sel":{"judge":"part","reads":1,"rdx":2,"ctx":230},"V4orch":{"judge":"part","ctx":256,"reads":1,"rdx":3},"V4orch_v4b":{"judge":"part","ctx":254,"reads":1,"rdx":3}},"opus-low":{"V2grep":{"judge":"part","reads":1,"rdx":0,"ctx":46},"V2rdx":{"judge":"part","reads":1,"rdx":2,"ctx":79},"V3sel":{"judge":"ok","reads":2,"rdx":0,"ctx":78},"V4orch":{"judge":"ok","ctx":130,"reads":1,"rdx":1},"V4orch_v4b":{"judge":"ok","ctx":116,"reads":1,"rdx":7}},"codex-gpt-5.5":{"V2grep":{"judge":"ok","reads":3,"rdx":0,"ctx":30},"V2rdx":{"judge":"ok","reads":2,"rdx":1,"ctx":25},"V3sel":{"judge":"ok","reads":2,"rdx":5,"ctx":49},"V4orch":{"judge":"ok","ctx":190,"reads":0,"rdx":23},"V4orch_v4b":{"judge":"ok","ctx":320,"reads":0,"rdx":33}}}},{"id":"4","label":"namespace 給 FQN","kind":"struct","models":{"haiku":{"V2grep":{"judge":"part","reads":3,"rdx":0,"ctx":252},"V2rdx":{"judge":"ok","reads":3,"rdx":1,"ctx":594},"V3sel":{"judge":"ok","reads":3,"rdx":0,"ctx":369},"V4orch":{"judge":"ok","ctx":879,"reads":3,"rdx":9},"V4orch_v4b":{"judge":"part","ctx":551,"reads":3,"rdx":7}},"opus-low":{"V2grep":{"judge":"part","reads":1,"rdx":0,"ctx":94},"V2rdx":{"judge":"ok","reads":0,"rdx":1,"ctx":235},"V3sel":{"judge":"ok","reads":2,"rdx":1,"ctx":211},"V4orch":{"judge":"ok","ctx":83,"reads":3,"rdx":5},"V4orch_v4b":{"judge":"ok","ctx":350,"reads":2,"rdx":4}},"codex-gpt-5.5":{"V2grep":{"judge":"ok","reads":1,"rdx":0,"ctx":42},"V2rdx":{"judge":"ok","reads":1,"rdx":0,"ctx":42},"V3sel":{"judge":"ok","reads":3,"rdx":1,"ctx":64},"V4orch":{"judge":"ok","ctx":1119,"reads":56,"rdx":10},"V4orch_v4b":{"judge":"bad","ctx":795,"reads":0,"rdx":34}}}},{"id":"4A","label":"namespace 不給 FQN","kind":"struct","models":{"haiku":{"V2grep":{"judge":"part","reads":4,"rdx":0,"ctx":947},"V2rdx":{"judge":"ok","reads":0,"rdx":10,"ctx":137},"V3sel":{"judge":"ok","reads":1,"rdx":5,"ctx":441},"V4orch":{"judge":"ok","ctx":441,"reads":0,"rdx":13},"V4orch_v4b":{"judge":"part","ctx":282,"reads":0,"rdx":10}},"opus-low":{"V2grep":{"judge":"ok","reads":0,"rdx":0,"ctx":66},"V2rdx":{"judge":"ok","reads":0,"rdx":5,"ctx":133},"V3sel":{"judge":"ok","reads":1,"rdx":4,"ctx":183},"V4orch":{"judge":"ok","ctx":171,"reads":0,"rdx":6},"V4orch_v4b":{"judge":"ok","ctx":300,"reads":0,"rdx":10}},"codex-gpt-5.5":{"V2grep":{"judge":"ok","reads":1,"rdx":0,"ctx":95},"V2rdx":{"judge":"ok","reads":0,"rdx":9,"ctx":31},"V3sel":{"judge":"ok","reads":0,"rdx":9,"ctx":67},"V4orch":{"judge":"ok","ctx":547,"reads":0,"rdx":35},"V4orch_v4b":{"judge":"bad","ctx":441,"reads":0,"rdx":26}}}},{"id":"7","label":"source_type 字串/silent bug","kind":"blind","models":{"haiku":{"V2grep":{"judge":"bad","reads":6,"rdx":0,"ctx":1484},"V2rdx":{"judge":"part","reads":3,"rdx":1,"ctx":1002},"V3sel":{"judge":"part","reads":4,"rdx":0,"ctx":718},"V4orch":{"judge":"part","ctx":1781,"reads":0,"rdx":30},"V4orch_v4b":{"judge":"part","ctx":1094,"reads":0,"rdx":44}},"opus-low":{"V2grep":{"judge":"bad","reads":2,"rdx":0,"ctx":244},"V2rdx":{"judge":"bad","reads":2,"rdx":3,"ctx":252},"V3sel":{"judge":"bad","reads":3,"rdx":14,"ctx":446},"V4orch":{"judge":"bad","ctx":545,"reads":9,"rdx":33},"V4orch_v4b":{"judge":"ok","ctx":1118,"reads":11,"rdx":17}},"codex-gpt-5.5":{"V2grep":{"judge":"bad","reads":28,"rdx":0,"ctx":109},"V2rdx":{"judge":"bad","reads":29,"rdx":4,"ctx":109},"V3sel":{"judge":"part","reads":23,"rdx":18,"ctx":226},"V4orch":{"judge":"part","ctx":741,"reads":17,"rdx":33},"V4orch_v4b":{"judge":"bad","ctx":1417,"reads":0,"rdx":56}}}},{"id":"8","label":"短形式↔FQN 計數","kind":"struct","models":{"haiku":{"V2grep":{"judge":"ok","reads":0,"rdx":0,"ctx":72},"V2rdx":{"judge":"ok","reads":14,"rdx":2,"ctx":392},"V3sel":{"judge":"ok","reads":0,"rdx":0,"ctx":130},"V4orch":{"judge":"part","ctx":362,"reads":0,"rdx":12},"V4orch_v4b":{"judge":"ok","ctx":501,"reads":1,"rdx":3}},"opus-low":{"V2grep":{"judge":"ok","reads":0,"rdx":0,"ctx":56},"V2rdx":{"judge":"ok","reads":0,"rdx":2,"ctx":85},"V3sel":{"judge":"ok","reads":0,"rdx":1,"ctx":65},"V4orch":{"judge":"ok","ctx":250,"reads":14,"rdx":2},"V4orch_v4b":{"judge":"ok","ctx":273,"reads":0,"rdx":2}},"codex-gpt-5.5":{"V2grep":{"judge":"ok","reads":0,"rdx":0,"ctx":7},"V2rdx":{"judge":"ok","reads":16,"rdx":2,"ctx":20},"V3sel":{"judge":"ok","reads":16,"rdx":1,"ctx":25},"V4orch":{"judge":"ok","ctx":149,"reads":8,"rdx":11},"V4orch_v4b":{"judge":"ok","ctx":464,"reads":4,"rdx":52}}}},{"id":"9","label":"callback symbol","kind":"blind","models":{"haiku":{"V2grep":{"judge":"ok","reads":1,"rdx":0,"ctx":264},"V2rdx":{"judge":"part","reads":1,"rdx":6,"ctx":494},"V3sel":{"judge":"ok","reads":2,"rdx":0,"ctx":448},"V4orch":{"judge":"ok","ctx":751,"reads":1,"rdx":6},"V4orch_v4b":{"judge":"ok","ctx":538,"reads":1,"rdx":5}},"opus-low":{"V2grep":{"judge":"ok","reads":1,"rdx":0,"ctx":96},"V2rdx":{"judge":"ok","reads":1,"rdx":1,"ctx":139},"V3sel":{"judge":"ok","reads":1,"rdx":0,"ctx":105},"V4orch":{"judge":"ok","ctx":293,"reads":2,"rdx":14},"V4orch_v4b":{"judge":"ok","ctx":297,"reads":1,"rdx":12}},"codex-gpt-5.5":{"V2grep":{"judge":"ok","reads":4,"rdx":0,"ctx":38},"V2rdx":{"judge":"ok","reads":4,"rdx":2,"ctx":99},"V3sel":{"judge":"ok","reads":3,"rdx":3,"ctx":29},"V4orch":{"judge":"ok","ctx":405,"reads":3,"rdx":16},"V4orch_v4b":{"judge":"ok","ctx":458,"reads":3,"rdx":24}}}},{"id":"10","label":"i18n 動態 key","kind":"blind","models":{"haiku":{"V2grep":{"judge":"part","reads":6,"rdx":0,"ctx":1180},"V2rdx":{"judge":"part","reads":7,"rdx":0,"ctx":1677},"V3sel":{"judge":"part","reads":8,"rdx":0,"ctx":857},"V4orch":{"judge":"part","ctx":1576,"reads":6,"rdx":16},"V4orch_v4b":{"judge":"ok","ctx":1954,"reads":6,"rdx":28}},"opus-low":{"V2grep":{"judge":"ok","reads":0,"rdx":0,"ctx":39},"V2rdx":{"judge":"ok","reads":5,"rdx":0,"ctx":398},"V3sel":{"judge":"ok","reads":4,"rdx":0,"ctx":321},"V4orch":{"judge":"ok","ctx":542,"reads":5,"rdx":14},"V4orch_v4b":{"judge":"part","ctx":349,"reads":7,"rdx":27}},"codex-gpt-5.5":{"V2grep":{"judge":"ok","reads":10,"rdx":0,"ctx":94},"V2rdx":{"judge":"ok","reads":19,"rdx":0,"ctx":83},"V3sel":{"judge":"ok","reads":17,"rdx":7,"ctx":174},"V4orch":{"judge":"ok","ctx":1098,"reads":21,"rdx":43},"V4orch_v4b":{"judge":"ok","ctx":389,"reads":15,"rdx":39}}}},{"id":"11","label":"routes helper 反查","kind":"struct","models":{"haiku":{"V2grep":{"judge":"part","reads":3,"rdx":0,"ctx":639},"V2rdx":{"judge":"part","reads":5,"rdx":0,"ctx":595},"V3sel":{"judge":"ok","reads":3,"rdx":0,"ctx":918},"V4orch":{"judge":"ok","ctx":1209,"reads":8,"rdx":19},"V4orch_v4b":{"judge":"bad","ctx":80,"reads":0,"rdx":0}},"opus-low":{"V2grep":{"judge":"ok","reads":2,"rdx":0,"ctx":58},"V2rdx":{"judge":"ok","reads":2,"rdx":2,"ctx":245},"V3sel":{"judge":"ok","reads":2,"rdx":0,"ctx":148},"V4orch":{"judge":"ok","ctx":324,"reads":1,"rdx":10},"V4orch_v4b":{"judge":"ok","ctx":197,"reads":1,"rdx":7}},"codex-gpt-5.5":{"V2grep":{"judge":"ok","reads":7,"rdx":0,"ctx":73},"V2rdx":{"judge":"ok","reads":7,"rdx":4,"ctx":73},"V3sel":{"judge":"ok","reads":6,"rdx":3,"ctx":94},"V4orch":{"judge":"ok","ctx":358,"reads":13,"rdx":23},"V4orch_v4b":{"judge":"ok","ctx":485,"reads":0,"rdx":32}}}},{"id":"12","label":"method_missing 轉發","kind":"blind","models":{"haiku":{"V2grep":{"judge":"ok","reads":8,"rdx":0,"ctx":376},"V2rdx":{"judge":"ok","reads":4,"rdx":0,"ctx":380},"V3sel":{"judge":"ok","reads":7,"rdx":0,"ctx":448},"V4orch":{"judge":"ok","ctx":767,"reads":5,"rdx":8},"V4orch_v4b":{"judge":"ok","ctx":688,"reads":4,"rdx":7}},"opus-low":{"V2grep":{"judge":"ok","reads":4,"rdx":0,"ctx":174},"V2rdx":{"judge":"ok","reads":5,"rdx":6,"ctx":303},"V3sel":{"judge":"ok","reads":5,"rdx":0,"ctx":243},"V4orch":{"judge":"ok","ctx":441,"reads":5,"rdx":6},"V4orch_v4b":{"judge":"ok","ctx":361,"reads":5,"rdx":4}},"codex-gpt-5.5":{"V2grep":{"judge":"ok","reads":16,"rdx":0,"ctx":93},"V2rdx":{"judge":"ok","reads":12,"rdx":3,"ctx":27},"V3sel":{"judge":"ok","reads":12,"rdx":8,"ctx":86},"V4orch":{"judge":"ok","ctx":627,"reads":17,"rdx":31},"V4orch_v4b":{"judge":"ok","ctx":425,"reads":10,"rdx":28}}}}]};
+const MODELS=[['haiku','Haiku'],['opus-low','Opus'],['codex-gpt-5.5','Codex']];
+const CONDS=['V2grep','V2rdx','V3sel','V4orch','V4orch_v4b'];
+
+function recallClass(v){ if(v==null) return 'c-na'; if(v>=0.999) return 'c-good'; if(v>=0.8) return 'c-part'; if(v>=0.6) return 'c-miss2'; return 'c-bad'; }
+function judgeClass(j){ return j==='ok'?'c-ok':j==='part'?'c-part':'c-bad'; }
+
+// ---- main 6-case heatmap (machine only, 5 arms) ----
+(function(){
+  const tb=document.querySelector('#mainTable tbody');
+  D.machine.forEach(r=>{
+    let html=`<td class="cid">case-${r.id}</td><td class="tech" style="white-space:normal">${r.label}</td>`;
+    MODELS.forEach(([mk])=>{
+      CONDS.forEach((c,ci)=>{
+        const cell=r.models[mk][c];
+        const gl = ci===0 ? ' gleft':'';
+        const hi = c==='V4orch_v4b' ? ' hi':'';
+        const rdx = cell.rdx>0 ? `<span class="d">rdx ${cell.rdx}</span>` : '';
+        const v=cell.recall;
+        html+=`<td class="cell ${recallClass(v)}${gl}${hi}">${v==null?'–':v.toFixed(2)}${rdx}</td>`;
+      });
+    });
+    const tr=document.createElement('tr'); tr.innerHTML=html; tb.appendChild(tr);
+  });
+})();
+
+// ---- value quality bars (per model, 5 conditions) ----
+(function(){
+  const wrap=document.getElementById('valueBars');
+  const sc={ok:1,part:0.5,bad:0};
+  const rows=[];
+  MODELS.forEach(([mk,mn])=>{
+    const s={V2grep:0,V2rdx:0,V3sel:0,V4orch:0,V4orch_v4b:0};
+    D.value.forEach(r=>CONDS.forEach(c=>s[c]+=sc[r.models[mk][c].judge]));
+    [['grep','V2grep'],['+rubydex','V2rdx'],['selector','V3sel'],['V4-α (orch)','V4orch'],['V4-β.2 (+rails-dsl)','V4orch_v4b']].forEach(([lbl,key])=>{
+      const v=s[key]; const cls = v>=8 ? 'win' : (v>=6.5 ? 'mid' : 'bad');
+      const lblClass = key==='V4orch_v4b' ? 'cool' : cls;
+      rows.push({name:`${mn} · ${lbl}`, val:v, cls:lblClass});
+    });
+  });
+  rows.forEach((r,i)=>{
+    const row=document.createElement('div'); row.className='bar-row';
+    row.innerHTML=`<div class="lbl">${r.name}</div><div><div class="track"><div class="fill ${r.cls}" style="width:0">${r.val.toFixed(1)} / 9</div></div></div>`;
+    wrap.appendChild(row);
+    setTimeout(()=>{ row.querySelector('.fill').style.width=(r.val/9*100)+'%'; }, 100+i*40);
+  });
+})();
+
+// ---- machine ctx bars (aggregate 6 cases, 5 arms) ----
+(function(){
+  const wrap=document.getElementById('ctxBars');
+  const rows=[];
+  MODELS.forEach(([mk,mn])=>{
+    const s={V2grep:0,V2rdx:0,V3sel:0,V4orch:0,V4orch_v4b:0};
+    D.machine.forEach(r=>CONDS.forEach(c=>s[c]+=(r.models[mk][c].ctx||0)));
+    [['grep','V2grep'],['+rubydex','V2rdx'],['selector','V3sel'],['V4-α (orch)','V4orch'],['V4-β.2 (+rails-dsl)','V4orch_v4b']].forEach(([lbl,key])=>{
+      rows.push({name:`${mn} · ${lbl}`, val:s[key], base:s.V2grep, key});
+    });
+  });
+  const max=Math.max(...rows.map(r=>r.val));
+  rows.forEach((r,i)=>{
+    let cls;
+    if(r.key==='V4orch_v4b') cls='cool';
+    else cls = r.val<=r.base*0.97?'win':(r.val>r.base*1.5?'bad':'mid');
+    const row=document.createElement('div'); row.className='bar-row';
+    row.innerHTML=`<div class="lbl">${r.name}</div><div><div class="track"><div class="fill ${cls}" style="width:0">${(r.val/1000).toFixed(2)}M</div></div></div>`;
+    wrap.appendChild(row);
+    setTimeout(()=>{ row.querySelector('.fill').style.width=Math.max(8,r.val/max*100)+'%'; }, 100+i*40);
+  });
+})();
+
+// ---- side nav scroll-spy ----
+(function(){
+  const links={};
+  document.querySelectorAll('.sidenav a').forEach(a=>links[a.getAttribute('href').slice(1)]=a);
+  const obs=new IntersectionObserver(entries=>{
+    entries.forEach(e=>{ if(e.isIntersecting){
+      Object.values(links).forEach(a=>a.classList.remove('active'));
+      if(links[e.target.id]) links[e.target.id].classList.add('active');
+    }});
+  },{rootMargin:'-45% 0px -50% 0px', threshold:0});
+  Object.keys(links).forEach(id=>{ const el=document.getElementById(id); if(el) obs.observe(el); });
+})();
+</script>
+</body>
+</html>
