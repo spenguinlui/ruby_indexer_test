@@ -204,6 +204,7 @@
   <a href="#routing"><span class="dot"></span><span class="lbl">04 find_code 取代 grep</span></a>
   <a href="#efficiency"><span class="dot"></span><span class="lbl">05 讀檔/token</span></a>
   <a href="#tiers"><span class="dot"></span><span class="lbl">★ 三層地雷分類</span></a>
+  <a href="#practical"><span class="dot"></span><span class="lbl">★ 值不值 + 重構</span></a>
   <a href="#corrections"><span class="dot"></span><span class="lbl">06 勘誤/方法</span></a>
   <a href="#verdict"><span class="dot"></span><span class="lbl">07 結論</span></a>
 </nav>
@@ -394,6 +395,67 @@
       </div>
     </div>
     <p class="note">給想評估自家 codebase「AI 友善度」的人:<b>L1</b> pattern 放心交給 AI;<b>L2</b> 給強模型 + 確保工具回完整資料(別截斷);<b>L3</b> pattern(尤其 constantize 那類)是 AI 維護黑洞 —— 考慮重構成顯式映射,或別期待靜態 AI 工具找全。這也呼應 V4 主結論:外層 orchestrator 解決 L1(+ 修 top_k 後的計數)、幫不到 L3。</p>
+  </div>
+</section>
+
+<section id="practical">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">★</span><h2>V4 對誰值得 + AI-readable codebase:給強模型省 ctx、給 codebase 拆地雷</h2></div>
+    <p class="sub">把前面所有測試收成兩個 actionable 結論:(1) <b>V4 orchestrator 對誰值得</b>(vs 純 LLM)、(2) <b>哪些 Ruby pattern 該重構</b>。兩個合起來才是 V4-α 真正的收尾。</p>
+
+    <h3 style="margin-top:24px">① V4 vs 純 LLM(V2-grep):強烈取決於模型強弱</h3>
+    <p>純 LLM = V2-grep 條件:無 MCP(<code>--strict-mcp-config</code>)、模糊 prompt、只給 Claude 內建的 Grep/Read/Glob 讓 LLM 自由搜。這是回答「orchestrator 比裸 LLM 強多少」最乾淨的對照。</p>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>模型</th><th>machine recall(純 LLM → V4)</th><th>machine ctx</th><th>value score</th><th>判斷</th></tr></thead>
+        <tbody>
+          <tr><td class="cid">Haiku 弱</td><td class="num">.82 → <b>.96</b>(+14pp)</td><td class="num">1.8M → 4.7M(×2.7)</td><td class="num">5.5 → 6.5(+1.0)</td><td class="tech">✅ <b>划算</b> —— ×2.7 ctx 換 +14pp recall</td></tr>
+          <tr><td class="cid">Opus 中</td><td class="num">.91 → .95(+3pp)</td><td class="num">0.6M → 1.7M(×2.7)</td><td class="num">7.0 → 8.0(+1.0)</td><td class="tech">⚠️ 邊緣 —— +3pp 接近 n=1 變異</td></tr>
+          <tr><td class="cid">Codex 強</td><td class="num">.94 → <b>.93</b>(−1pp)</td><td class="num">0.4M → 5.2M(<b>×12.4</b>)</td><td class="num">8.0 → 8.5(+0.5)</td><td class="tech">❌ <b>淨負擔</b> —— ×12 ctx 換 −1pp recall</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout warn"><span class="lab">關鍵 takeaway(但這是 α MVP 下限,見下方 ③)</span><p><b>以 V4-α 目前的設計</b>:orchestrator 不是萬靈丹、是「給能力不足的模型補結構認知」的工具。Codex 純 LLM 已接近天花板(.94 / 8.0),再灌 ×12 ctx 只是負擔。Haiku 純 LLM 弱(.82 / 5.5),orchestrator 把它拉到接近 Opus 純 LLM 水準。<b>選用建議:α MVP 下,弱/中模型用 V4,強模型用裸 LLM 即可</b>。但 ⚠️ <b>×12 ctx 是 α 取捨,不是 orchestrator 概念的天花板</b> —— 見下方 ③ V4-β 效率優化路徑,(b) 修好後 codex V4 也可能由負擔轉持平/略升。</p></div>
+
+    <h3 style="margin-top:36px">② AI-readable codebase:L3 地雷該重構,不是工具該救</h3>
+    <p>從 L3 三題(case-7/13/10)三模型 9 格幾乎全摃龜,加 V4-γ runtime introspection 評估 no-go(高風險低 ROI),結論很清楚:<b>L3 pattern 不是工具該救的、是 codebase 該重構的</b>。</p>
+    <div class="callout"><span class="lab">reframe</span><p>「曾經寫法只要讓人看懂、現在首要也要讓 LLM 看懂」。1990s-2010s 寫 Ruby 的美學是 DRY + metaprogramming + polymorphic constantize,這些對<b>人類</b>看懂的成本(grep 多檔猜 runtime 行為)其實也不低,只是資深工程師習慣了。現在 LLM 加入維護循環 = <b>多一個讀者</b>,而 LLM 對 runtime-eval pattern 是黑洞(case-7 三模型 9 格全摃龜) —— <b>這把「炫技寫法的維護成本」從『資深工程師願意付』,推到『LLM 摸不著、新人也跟著卡』</b>。閾值變了,寫法該變。</p></div>
+    <h4 style="margin-top:18px">具體該重構的 anti-pattern</h4>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>地雷 pattern</th><th>case</th><th>建議重構</th></tr></thead>
+        <tbody>
+          <tr><td class="tech"><code>str.classify.constantize</code> / polymorphic 字串解析</td><td class="cid">7</td><td class="tech">顯式 hash 映射(<code>{ 'income_expense' => Accounting::IncomeExpense }</code>),或 enum + 顯式 dispatch method</td></tr>
+          <tr><td class="tech">手動 hash dispatch table <code>{ 'k' => Class }[runtime_key]</code></td><td class="cid">13</td><td class="tech">改顯式 case/when,或 enum + Strategy pattern(每個 key 對應顯式 class)</td></tr>
+          <tr><td class="tech"><code>t("a.b.#{var}")</code> 動態拼 i18n key</td><td class="cid">10</td><td class="tech">列舉所有可能 key + 顯式 <code>t('a.b.x')</code>;或包成 helper method 顯式接受 sym 參數(grep 友善)</td></tr>
+          <tr><td class="tech"><code>class_eval(&lt;&lt;-X) def #{var}; ... ; X</code> 動態生方法</td><td class="cid">3</td><td class="tech">顯式 def + Concern;若真要動態,加註解列舉「會生出哪些方法」</td></tr>
+          <tr><td class="tech"><code>method_missing</code> + <code>respond_to_missing?</code> 轉發</td><td class="cid">12</td><td class="tech">明確列出轉發方法(<code>delegate :foo, :bar, to: :inner</code>);若數量爆 → 重新設計為 composition,別用 method_missing</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note">這些 pattern 不是「該禁」,是「該意識到代價」。寫的時候若一定要動態,<b>留下 grep-able 線索</b> —— 註解列舉、常數 hash 對照表 —— 讓 LLM(和人)能在<b>不執行</b>的前提下看出影響面。順帶一提:<b>case-5(YAML 字串 worker)三模型 V4 都 1.0、純 LLM 也 1.0</b> —— 同樣是「字串指 class」,字面固定就是 L1 友善,需要求值才是 L3 地雷,這個分水嶺值得寫進 codebase 風格指南。</p>
+
+    <h3 style="margin-top:36px">③ V4-β 效率優化路徑(α MVP 沒做的)</h3>
+    <p>上面 ① 的「×12 ctx」+「強模型負擔」結論<b>不是 orchestrator 概念的限制</b>,是 α MVP 為了求簡單可靠選的取捨。具體有三條優化沒做、每條都打到既有結論:</p>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>優化</th><th>解什麼</th><th>預期</th></tr></thead>
+        <tbody>
+          <tr><td class="tech"><b>(a) rubydex_mcp 長駐 session</b><br>(繞 anyio cancel-scope,寫自己的 JSON-RPC client 或 FastMCP lifespan)</td><td class="tech">α 為了避開 anyio task-binding 改 <b>per-call session</b>,每次 find_code 都 re-spawn rubydex_mcp、<b>重新 indexing</b>。fixture ms 級無感,production codebase 5-10s 重稅 × N 次 find_code/題 = 一輪幾十分鐘 wall 在 re-index</td><td class="tech">大 codebase wall 大幅降。primer 那層已 cache(<code>~/.rubydex-orch/cache/&lt;hash&gt;.primer</code>、git HEAD invalidation),find_code 那層該跟上</td></tr>
+          <tr><td class="tech"><b>(b) 按 intent 區分「定位拿位置 / 計數拿全」</b><br>(classifier 加 count 判斷,refs/desc 回 distinct files 而非 100 筆 file:line)</td><td class="tech"><b>×12 ctx 的元兇</b>:α 為求簡單,structural 一律 enrich 拿全引用集 + 回 total。對「找哪些檔」的定位題其實只要 distinct files(case-1 ~14 個檔,不用 100 筆 file:line)</td><td class="tech"><b>打掉「強模型負擔」結論</b>:codex ctx 從 5.2M 砍回 V3sel 等級(~0.4-1M),保留計數題 total 正確 → codex V4 可能由 −1pp 變持平/略升、不再 ×12 ctx 負擔</td></tr>
+          <tr><td class="tech"><b>(c) find_code 結果 cache</b><br>(query+project_root+git_HEAD → response)</td><td class="tech">benchmark/CI 場景多輪同題、重跑都付全成本</td><td class="tech">重複 query 秒回</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout"><span class="lab">α MVP 的誠實</span><p>V4-α 證明了「外層 routing 可行 + 計數題 top_k 修好就救」這個概念,但「效率/ctx」這塊它<b>沒做完</b>,選了「拿全 + 簡單可靠」的下限取捨。β 把 (b) 做完才是真正的效率優化、且(b) 修好後上面 ① 的結論會翻轉(強模型 V4 也不再負擔)。</p></div>
+
+    <h3 style="margin-top:36px">兩面合起來看 V4-α 的兩個 actionable</h3>
+    <ul style="margin:6px 0 0 20px;line-height:1.85">
+      <li><b>給強模型(Codex 等)</b>:α MVP 下是負擔,但這是 α 取捨。<b>β 把 (b) 做完應該翻轉</b>;在 β 之前,可考慮裸 LLM</li>
+      <li><b>給弱/中模型(Haiku/Opus)</b>:現在就划算,且 β (a)(c) 還能省 wall + 重 query 成本</li>
+      <li><b>給 codebase 維護者</b>:<b>L3 pattern 不要等工具救,該重構</b> —— 把炫技動態寫法改成顯式映射,人類和 LLM 都受益。閾值已從「資深工程師看得懂就好」推到「LLM 也要看懂」</li>
+      <li><b>給 V4-β</b>:(b) 是最高 ROI,(a) 對 production codebase 重要,(c) 對 benchmark/CI 重要 —— 順序建議 (b) → (a) → (c)</li>
+    </ul>
   </div>
 </section>
 
