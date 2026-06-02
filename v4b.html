@@ -204,7 +204,7 @@
   <div class="wrap">
     <span class="kicker">Code-Search Benchmark · V4-β.2 · rails-dsl backend × 全 15 題 · 2026</span>
     <h1>裝了 <em>rails-dsl backend</em> 之後:<br>強模型 machine 全綠、value 卻大降</h1>
-    <p class="lede">V4-α 證明外層 orchestrator 把 routing 拉到 LLM 外面可行,但僅有 rubydex + rg 兩個 backend、沒兌現「多工具協同」的承諾。<b>V4-β.2</b> 補上 <code>rails-dsl</code>:靜態 prism AST 抽 Rails routes + ActiveRecord 關聯 + polymorphic 線索,搭配 tokenizing query scorer 與 hint vocabulary。三模型 × 15 題重跑(<code>ORCH_ENABLE_RAILS_DSL=1</code>),這次拿 V2-grep / V2-rdx / V3-sel / V4-orch(α)/ V4-orch(β.2)五臂並排。問題:加了 Rails 知識的 backend,真的全面變好嗎?</p>
+    <p class="lede">V4-α 證明外層 orchestrator（分派器，由程式決定呼叫哪個搜尋工具、不靠 LLM 自己判斷）把 routing 拉到 LLM 外面可行,但僅有 rubydex（靜態 Ruby AST 索引工具）+ rg（ripgrep，字串搜尋）兩個 backend、沒兌現「多工具協同」的承諾。<b>V4-β.2</b> 補上 <code>rails-dsl</code>:靜態 prism AST（Ruby 程式碼語法樹分析）抽 Rails routes + ActiveRecord 關聯 + polymorphic 線索,搭配 tokenizing query scorer（分詞相關性排序）與 hint vocabulary（意圖關鍵字對應）。三模型 × 15 題重跑(<code>ORCH_ENABLE_RAILS_DSL=1</code>),這次拿 V2-grep / V2-rdx / V3-sel / V4-orch(α)/ V4-orch(β.2)五臂（五種策略條件）並排。問題:加了 Rails 知識的 backend,真的全面變好嗎?</p>
     <div class="vswitch">
       <a href="./index.html">V1</a>
       <a href="./v2.html">V2</a>
@@ -213,15 +213,15 @@
       <a class="cur" href="./v4b.html">V4-β.2</a>
     </div>
     <div class="meta">
-      <span><b>15</b> cases(6 機器 + 9 判讀)</span>
+      <span><b>15</b> cases(6 機器題〔自動評分〕+ 9 判讀題〔人工品質評分〕)</span>
       <span><b>3</b> models(Haiku 4.5 · Opus 4.7-low · GPT-5.5)</span>
-      <span><b>5</b> arms(grep / rdx / sel / α / β.2)</span>
-      <span><b>n=1</b>,看方向不看小數點</span>
+      <span><b>5</b> arms(grep / rdx / sel / α / β.2)〔每個 arm = 一種搜尋策略條件〕</span>
+      <span><b>n=1</b>〔每題只跑一次，隨機誤差大，看趨勢方向不看小數點〕</span>
     </div>
     <div class="stats">
-      <div class="stat accent"><div class="n">Codex: 全綠</div><div class="l">機器 6 題 file-recall <b>0.857 → 1.000</b>(+14pp,full mark)+ ctx <b>−30%</b>。β.2 最大個案勝。但同模型 value 從 8.5 → 6.0,case-4/4A/7 全崩</div></div>
-      <div class="stat warn"><div class="n">Haiku: 雙降</div><div class="l">機器 recall <b>0.958 → 0.827</b>(−13pp)、value <b>7.0 → 6.0</b>(−1.0,主場 case-11 在 rails-dsl 1-shot 答案後拒絕作答)。β.2 最戲劇反諷</div></div>
-      <div class="stat"><div class="n">Opus: 個案性升</div><div class="l">machine recall +4pp、ctx +27%(中性偏正)。value 7→8.5(+0.5,case-7 silent bug bad→ok 是 rails-dsl polymorphic 上下文的純贏)</div></div>
+      <div class="stat accent"><div class="n">Codex: 全綠</div><div class="l">機器 6 題 file-recall（找到正確檔案的比率，0~1）<b>0.857 → 1.000</b>(+14pp〔百分點〕,full mark)+ ctx（token 消耗量）<b>−30%</b>。β.2 最大個案勝。但同模型 value 從 8.5 → 6.0,case-4/4A/7 全崩</div></div>
+      <div class="stat warn"><div class="n">Haiku: 雙降</div><div class="l">機器 recall <b>0.958 → 0.827</b>(−13pp)、value <b>7.0 → 6.0</b>(−1.0,主場 case-11 在 rails-dsl 1-shot〔一次給完整答案〕後拒絕作答)。β.2 最戲劇反諷</div></div>
+      <div class="stat"><div class="n">Opus: 個案性升</div><div class="l">machine recall +4pp、ctx +27%(中性偏正)。value 7→8.5(+0.5,case-7 silent bug〔執行期才爆的靜默錯誤〕bad→ok 是 rails-dsl polymorphic 上下文的純贏)</div></div>
       <div class="stat bad"><div class="n">非 universal</div><div class="l">β.2 不是 universal 升級。是<b>模型相依 + 題型相依</b>的雙重 trade-off,而且強模型 machine ↔ value 二次拉鋸。selectively 開,不要無條件 on</div></div>
     </div>
   </div>
@@ -232,8 +232,8 @@
     <div class="tldr">
       <span class="lab">一句話結論</span>
       <p><strong>V4-β.2(orchestrator + rails-dsl)不是「下一代 V4」,是有強烈題型 × 模型相依的 selective add-on。對 Codex 強模型而言:rails-dsl 把它變成 machine-recall 完美機(0.857→1.000、ctx −30%),代價是 value 大降(8.5→6.0,計數與 silent bug 推理題崩);對 Opus 個案性勝(case-7 silent bug bad→ok);對 Haiku 雙降,連最該贏的主場 case-11 都因 1-shot 答案後撞 cwd 衝突直接拒絕作答。</strong></p>
-      <p><strong>最戲劇的反諷是 Haiku case-11 routes-helper</strong>(rails-dsl 的指定主場題):context 從 1209K 砍到 80K、rdx 呼叫從 19 變 0,理論上是 β.2 該大勝的場景。但 Haiku 拿到 rails-dsl 一次給回的完整答案後,撞到「cwd 在 /Users/liu/ruby_indexer、但 project_root 在 /Users/liu/sunnyfounder/e_trading」的工具路徑衝突,直接拒絕作答 → <code>bad</code>。<strong>給太多 high-confidence 上下文,弱模型反而被看似 instruction 矛盾的訊號搞亂。</strong></p>
-      <p><strong>強模型的二次 trade-off</strong>:Codex machine 全綠(case-1 delegate 鏈 recall 0.64→1.00 +36pp、ctx −45%),但同樣的「rails-dsl 給高 confidence Rails 知識」上下文,在 case-7 polymorphic silent bug 題上讓 Codex 把 <code>'income_expense'</code> <i>解讀</i>成 <code>ElectricityAccounting::ChargesCalculation::FixedCharge::Models::IncomeExpense</code>(named with high confidence)→ explain-away silent bug → <code>part → bad</code>。在 case-4/4A 計數題上 total 從 ~100/145 暴跌到 41/58(−60%),疑似 top_k 截斷或 false-confidence「我都看完了」early termination。</p>
+      <p><strong>最戲劇的反諷是 Haiku case-11 routes-helper</strong>(rails-dsl 的指定主場題):context 從 1209K 砍到 80K、rdx 呼叫從 19 變 0,理論上是 β.2 該大勝的場景。但 Haiku 拿到 rails-dsl 一次給回的完整答案後,撞到「cwd（工作目錄）在 /Users/liu/ruby_indexer、但 project_root 在 /Users/liu/sunnyfounder/e_trading」的工具路徑衝突,直接拒絕作答 → <code>bad</code>。<strong>給太多 high-confidence 上下文,弱模型反而被看似 instruction 矛盾的訊號搞亂。</strong></p>
+      <p><strong>強模型的二次 trade-off</strong>:Codex machine 全綠(case-1 delegate 鏈 recall 0.64→1.00 +36pp、ctx −45%),但同樣的「rails-dsl 給高 confidence Rails 知識」上下文,在 case-7 polymorphic silent bug 題上讓 Codex 把 <code>'income_expense'</code> <i>解讀</i>成 <code>ElectricityAccounting::ChargesCalculation::FixedCharge::Models::IncomeExpense</code>(named with high confidence)→ explain-away（用旁證合理化掉真正的 bug）silent bug → <code>part → bad</code>。在 case-4/4A 計數題上 total 從 ~100/145 暴跌到 41/58(−60%),疑似 top_k truncation（候選列表被截斷）或 false-confidence「我都看完了」early termination。</p>
       <p><strong>三個 caveat</strong>:① 全程 <strong>n=1</strong>,單次變異大,所有結論都是方向訊號。② β.2 的 rails-dsl 對「Rails-aware 但非 Rails-knowledge 黑洞」題型(case-8/10 Haiku 略升)有閃光,但 main path(case-1/13)反而受傷。③ Opus 的 case-7 win 是真的、但同模型 case-10 也從 ok 退到 part —— 個案性 win 不能歸納成「Opus 適合 β.2」,需要更多 N。</p>
     </div>
   </div>
@@ -262,14 +262,14 @@
         </tbody>
       </table>
     </div>
-    <div class="callout acc"><span class="lab">本輪實驗 5 條件</span><p>把 <b>V2-grep</b>(純 LLM)、<b>V2-rdx</b>(rubydex 工具箱)、<b>V3-sel</b>(prompt selector)、<b>V4-α</b>(orchestrator,僅 rubydex+rg)、<b>V4-β.2</b>(orchestrator,加 rails-dsl + tokenizing scorer + hint vocab)五臂並排。前四個沿用 V4 報告數據,第五個本輪新跑。<code>ORCH_ENABLE_RAILS_DSL=1</code> 環境變數開啟 backend。Claude <code>--strict-mcp-config</code> / Codex <code>--ignore-user-config</code> 隔離。Value 9 題每題同 judge 重判 V4-α + V4-β.2 兩臂(對齊 strictness、附 V4-α 錨點驗 drift)。</p></div>
+    <div class="callout acc"><span class="lab">本輪實驗 5 條件</span><p>把 <b>V2-grep</b>(純 LLM 自行搜尋)、<b>V2-rdx</b>(rubydex 工具箱可用)、<b>V3-sel</b>(prompt selector，用 prompt 引導 LLM 自己選工具)、<b>V4-α</b>(orchestrator，程式控制 routing，僅 rubydex+rg)、<b>V4-β.2</b>(orchestrator，加 rails-dsl + tokenizing scorer + hint vocab)五臂並排。前四個沿用 V4 報告數據,第五個本輪新跑。<code>ORCH_ENABLE_RAILS_DSL=1</code> 環境變數開啟 backend。Claude <code>--strict-mcp-config</code> / Codex <code>--ignore-user-config</code> 隔離（防止全域 MCP 工具污染對照組）。Value 9 題每題同一 judge 重判 V4-α + V4-β.2 兩臂（對齊評分嚴格度、附 V4-α 錨點驗 strictness drift）。</p></div>
   </div>
 </section>
 
 <section id="main">
   <div class="wrap">
     <div class="sec-head"><span class="sec-num">02</span><h2>機器 6 題主表:5 臂並排 × 3 模型 × file-recall</h2></div>
-    <p class="sub">數字 = file-recall(0~1)、小字 = rubydex/backend 呼叫總次數。第 5 欄(β.2,加粗框)= 本輪新加的 V4-β.2。看每模型 5 欄由左到右的趨勢線,特別注意第 4→5 欄的變化(α→β.2)。</p>
+    <p class="sub">數字 = file-recall（LLM 找到所有正確檔案的比率，0~1，越高越好）、小字 = rubydex/backend 呼叫總次數。第 5 欄(β.2,加粗框)= 本輪新加的 V4-β.2。看每模型 5 欄由左到右的趨勢線,特別注意第 4→5 欄的變化(α→β.2)。</p>
     <div class="legend">
       <span><i class="c-good"></i>recall ≥.999</span>
       <span><i class="c-part"></i>0.8–.99</span>
@@ -299,7 +299,7 @@
 <section id="value">
   <div class="wrap">
     <div class="sec-head"><span class="sec-num">03</span><h2>value 9 題 quality score:三模型 × 5 臂並排</h2></div>
-    <p class="sub">9 個 value 題的判讀品質分數(ok=1 / part=.5 / bad=0,滿分 9),五條件並排。看每模型最後一條(β.2)的相對位置 —— 三模型分裂:<b>Haiku 6.0(↓1.0)、Opus 8.5(↑0.5)、Codex 6.0(↓2.5)</b>。Codex 的暴跌是「machine 全綠的代價」,Opus 的小升靠 case-7 silent bug 救起,Haiku 的下跌是主場 case-11 catastrophic 拖累。</p>
+    <p class="sub">9 個判讀題的人工品質評分（ok=1 / part=0.5 / bad=0，滿分 9），五條件並排。看每模型最後一條(β.2)的相對位置 —— 三模型分裂:<b>Haiku 6.0(↓1.0)、Opus 8.5(↑0.5)、Codex 6.0(↓2.5)</b>。Codex 的暴跌是「machine 全綠的代價」,Opus 的小升靠 case-7 silent bug 救起,Haiku 的下跌是主場 case-11 catastrophic 拖累。</p>
     <div class="bars" id="valueBars" style="margin:18px 0 6px"></div>
     <p class="note">9 題中,β.2 相對 α 變化:<b>升的</b> Opus·case-7(bad→ok,+1)、Haiku·case-8(part→ok,+0.5)、Haiku·case-10(part→ok,+0.5);<b>降的</b> Haiku·case-4(ok→part,−0.5)、Haiku·case-4A(ok→part,−0.5)、Haiku·case-11(ok→bad,−1)、Opus·case-10(ok→part,−0.5)、Codex·case-4(ok→bad,−1)、Codex·case-4A(ok→bad,−1)、Codex·case-7(part→bad,−0.5)。<b>5 個動,5 個降、3 個升</b> —— 但降的權重(計數題、主場題)比升的(silent bug 救起)大,且分佈不均(Codex 全踩在 bad 那邊)。</p>
   </div>
@@ -308,7 +308,7 @@
 <section id="ctx">
   <div class="wrap">
     <div class="sec-head"><span class="sec-num">04</span><h2>機器 6 題 aggregate ctx:5 臂並排</h2></div>
-    <p class="sub">6 機器題 aggregate context token(in+cache+out,K),五條件並排。看 β.2 列相對 α 的位移:<b>Codex −30%(4024K→2825K)、Haiku −21%(4165K→3310K)、Opus +27%(1395K→1770K)</b>。Codex 的 ctx 大降跟 machine 全綠是同一個現象 —— rails-dsl 給的 Rails-knowledge backend 直接命中、不用反覆換 query。Opus ctx 反向是因為它在 case-2/5/14 對 backend 結果再呼叫 rubydex 二次驗證。</p>
+    <p class="sub">6 機器題的 context token 合計（in+cache+out，單位 K，代表 LLM 一輪問答消耗的 token 總量），五條件並排。看 β.2 列相對 α 的位移:<b>Codex −30%(4024K→2825K)、Haiku −21%(4165K→3310K)、Opus +27%(1395K→1770K)</b>。Codex 的 ctx 大降跟 machine 全綠是同一個現象 —— rails-dsl 給的 Rails-knowledge backend 直接命中、不用反覆換 query。Opus ctx 反向是因為它在 case-2/5/14 對 backend 結果再呼叫 rubydex 二次驗證。</p>
     <div class="bars" id="ctxBars" style="margin:18px 0 6px"></div>
     <p class="note">β.2 並沒有解決「強模型 ctx 負擔」—— Codex 雖然從 ×9.7(α 對 V3sel)降到 ×7.5,仍遠高於 V3sel 基線。<b>真實的故事是「Codex 的 ctx 砍法靠 rails-dsl 命中、Haiku 的 ctx 砍法靠 case-11 拒絕作答(用 0 換 ctx)」</b>—— Haiku case-11 ctx 從 1209K 變 80K 看起來省、實際是 quality bad。把 ctx 跟 quality 同時看才對,單看 ctx 會 over-claim 效率提升。</p>
   </div>
@@ -418,7 +418,7 @@
         </tbody>
       </table>
     </div>
-    <p>case-7 是「找 production code 裡 polymorphic <code>source_type</code> 字串裡的 silent bug —— 字串會被 <code>classify.constantize</code> 解到頂層常數,但對應的真實 model 在 namespace 裡,於是 production runtime 會 RuntimeError」題。<b>答案核心</b>是 <code>'income_expense'</code> —— 它 constantize 到頂層 <code>IncomeExpense</code>(不存在),但有個 namespaced model <code>ElectricityAccounting::ChargesCalculation::FixedCharge::Models::IncomeExpense</code> 確實存在,只是不在頂層 → silent bug。</p>
+    <p>case-7 是「找 production code 裡 polymorphic <code>source_type</code> 字串裡的 silent bug —— 字串會被 <code>classify.constantize</code>（字串轉成 Ruby 常數名稱並嘗試取得該 class）解到頂層常數，但對應的真實 model 在 namespace 裡，於是 production runtime 會 RuntimeError」題。<b>答案核心</b>是 <code>'income_expense'</code> —— 它 constantize 到頂層 <code>IncomeExpense</code>（不存在），但有個 namespaced model <code>ElectricityAccounting::ChargesCalculation::FixedCharge::Models::IncomeExpense</code> 確實存在，只是不在頂層 → silent bug。</p>
     <p>Codex 在 V4-α 給了 part(列了 <code>Revenue::Due</code> 等真 bug、漏 income_expense)。換 β.2 後,rails-dsl 餵的 polymorphic 關聯上下文裡顯式列出了 <code>ElectricityAccounting::ChargesCalculation::FixedCharge::Models::IncomeExpense</code> 這個 namespaced model 的存在,於是 Codex「合理化」掉:既然有這個 model、那 <code>'income_expense'</code> 對應的就是它(named with high confidence),不是 bug。</p>
     <div class="callout"><span class="lab">這是 rails-knowledge 反向</span><p>Codex 用 rails-dsl 給的 namespaced model 上下文把 silent bug <b>explain away</b> —— backend 給的不是錯資訊,而是「太多正確但 misleading 的相關上下文」,讓強模型在 high-confidence 下對「constantize 解的是<b>頂層</b>常數、不是任何 namespaced 同名類」這個 Rails 真實 runtime 行為失察。<b>對 Opus(中模型)同樣的上下文反而救起來</b>(Opus bad→ok),因為它走「A 類真 polymorphic vs B 類 sentinel」的分組推理路徑、明確指認 income_expense 是 silent bug。同 backend、同題、不同推理風格 → 反方向結論。</p></div>
   </div>
@@ -443,7 +443,7 @@
   <div class="wrap">
     <div class="anon">
       <b>方法 & 可重現</b><br>
-      6 機器題用 <code>automation/answer_keys_machine/*.files</code> ground-truth 算 file-level recall(對版面免疫)。9 value 題對 <code>results/answer_key/case-*.md</code> 由 per-case 單一 judge 判 ok/part/bad(recall-first:漏報重罰、過報輕罰);V4-β.2 每題同 judge 重判 V4-α + V4-β.2 兩臂、附 V4-α 錨點驗 strictness drift。orchestrator = 外層 MCP server(<code>rubydex_orchestrator/</code>,單一 <code>find_code</code> 工具 + rule-based intent classifier + rails-dsl prism AST backend),<code>ORCH_ENABLE_RAILS_DSL=1</code> 開啟。benchmark 用 <code>run_all_orchestrator.sh</code>(Claude <code>--strict-mcp-config</code>、Codex <code>--ignore-user-config</code> 隔離);V2/V3/V4-α 四臂沿用 V4 報告乾淨數據。彙整 <code>v4b_compare_aggregate.py</code>,co-judge 存 <code>v4b_value_cojudge.md</code>。
+      6 機器題用 <code>automation/answer_keys_machine/*.files</code> ground-truth 算 file-level recall（版面格式無關）。9 判讀題對 <code>results/answer_key/case-*.md</code> 由 per-case 單一 judge（同一個評分者，避免嚴格度漂移）判 ok/part/bad（recall-first：漏報重罰、過報輕罰）；V4-β.2 每題同 judge 重判 V4-α + V4-β.2 兩臂、附 V4-α 錨點驗 strictness drift（評分標準是否飄移）。orchestrator = 外層 MCP server（<code>rubydex_orchestrator/</code>，單一 <code>find_code</code> 工具 + rule-based intent classifier + rails-dsl prism AST backend），<code>ORCH_ENABLE_RAILS_DSL=1</code> 開啟。benchmark 用 <code>run_all_orchestrator.sh</code>（Claude <code>--strict-mcp-config</code>、Codex <code>--ignore-user-config</code> 隔離）；V2/V3/V4-α 四臂沿用 V4 報告乾淨數據。彙整 <code>v4b_compare_aggregate.py</code>，co-judge 存 <code>v4b_value_cojudge.md</code>。
     </div>
     <p>目標為三個生產 Rails 專案(已匿名)。題名與符號為中性化代稱。Rubydex Benchmark V4-β.2 · 2026-05-31 · n=1,看方向不看小數點。</p>
   </div>
