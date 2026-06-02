@@ -198,6 +198,7 @@
   <a href="#fit"><span class="dot"></span><span class="lbl">06 對誰值得</span></a>
   <a href="#stories"><span class="dot"></span><span class="lbl">07 case 故事</span></a>
   <a href="#verdict"><span class="dot"></span><span class="lbl">08 結論 + γ go/no-go</span></a>
+  <a href="#pr3"><span class="dot"></span><span class="lbl">09 PR#3 補充</span></a>
 </nav>
 
 <header class="hero">
@@ -436,6 +437,74 @@
     <div class="callout warn"><span class="lab">V4-γ runtime backend go/no-go</span><p>本輪也順帶釐清 V4-γ(runtime introspection backend,load Rails app 做 reflection)的可行性。case-7 silent bug 是 V4-γ 該大勝的指定主場(只有真實 runtime 知道 constantize 解到哪)—— 但 β.2 結果<b>矛盾</b>:Opus 升(rails-dsl polymorphic 上下文有用)、Codex 降(同樣上下文 explain away)。若 γ 給更強的「runtime 確認 income_expense 在頂層不存在」訊號,理論上 Codex 該被強訊號逼回正確答案;但 β.2 case-7 經驗顯示<b>強模型遇到強 backend 訊號可能再 explain away(找個其他原因合理化)、不是直接服從</b>。實作成本(Rails app 啟動 + 隔離)+ 不確定能不能解決 explain-away → <b>V4-γ 仍 no-go</b>,跟 α 報告結論一致。下一步該是 model-aware classifier(β.3?)而不是再多裝 backend。</p></div>
 
     <div class="callout"><span class="lab">如何看這些數字</span><p>每格只跑<b>一次(n=1)</b>,單次變異很大。所有結論都是<b>方向性訊號</b>;單題的小差異(尤其 ±1 個 part/ok、或 case-10 Opus ok→part 這類 random drift)別當定論。要可發布的強主張需每格 N 次取中位。<b>本報告對 β.2 的判斷「強模型雙刃劍 + Haiku 雙降」的方向訊號夠強</b>(Codex value −2.5、Haiku case-11 catastrophic 都不是 ±1 邊界),但模型內個案的具體解讀(case-10 Opus 反向、Haiku case-8 救起)需要更多 N。</p></div>
+  </div>
+</section>
+
+<section id="pr3">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">09</span><h2>補充驗證:PR #3 code refactoring 對 case-7 / case-10 的影響</h2></div>
+    <p class="sub">V4-β.2 跑完後，對兩個主要弱點做了 L3 → L1 重構（把動態程式寫法改成顯式常數），再以相同 orchestrator 設定（V4-β.2）重跑 case-7 + case-10。測試假設：<strong>改 code 讓 LLM 看穿比加工具更有效</strong>。</p>
+
+    <h3>PR #3 改了什麼</h3>
+    <ul style="margin:0 0 14px 18px;line-height:1.85">
+      <li><code>app/contexts/order_change_status_context.rb</code>:加 <code>ORDER_STATUS_KEYS = Order.statuses.keys.freeze</code> + guard raise，把動態 i18n key 的合法值白名單顯式化（case-10 直接答案 file）。</li>
+      <li><code>domains/external_notifier/use_cases/notify.rb</code>:把 <code>"ExternalNotifier::Mappers::#{key.camelize}".constantize</code> 改成顯式 <code>NOTIFIER_REGISTRY</code> hash，列舉所有支援的 notifier key（消除 constantize_interpolated silent bug）。</li>
+    </ul>
+
+    <h3>before / after 對比（v4b → v4c，同一個 V4-β.2 orchestrator）</h3>
+    <div class="tbl-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>case</th><th>arm</th>
+            <th>Haiku judge</th><th>Haiku ctx</th>
+            <th>Opus judge</th><th>Opus ctx</th>
+            <th>Codex judge</th><th>Codex ctx</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="cid" rowspan="2">case-7<br><span style="font-weight:400;font-size:12px">source_type<br>silent bug</span></td>
+            <td>V4-β.2（改前）</td>
+            <td><span class="c-part" style="padding:2px 7px;border-radius:4px">part</span></td><td class="num">1094K</td>
+            <td><span class="c-ok" style="padding:2px 7px;border-radius:4px">ok</span></td><td class="num">1118K</td>
+            <td><span class="c-bad" style="padding:2px 7px;border-radius:4px">bad</span></td><td class="num">1417K</td>
+          </tr>
+          <tr style="background:#f7f2e8">
+            <td><b>v4c（PR#3 後）</b></td>
+            <td><span class="c-part" style="padding:2px 7px;border-radius:4px">part</span></td><td class="num">585K <span style="color:var(--good)">↓46%</span></td>
+            <td><span class="c-ok" style="padding:2px 7px;border-radius:4px">ok</span></td><td class="num">1074K <span style="color:var(--muted)">≈</span></td>
+            <td><span class="c-part" style="padding:2px 7px;border-radius:4px">part</span></td><td class="num">1198K <span style="color:var(--good)">↓16%</span></td>
+          </tr>
+          <tr>
+            <td class="cid" rowspan="2">case-10<br><span style="font-weight:400;font-size:12px">i18n 動態 key<br>引用鏈</span></td>
+            <td>V4-β.2（改前）</td>
+            <td><span class="c-ok" style="padding:2px 7px;border-radius:4px">ok</span></td><td class="num">1954K</td>
+            <td><span class="c-part" style="padding:2px 7px;border-radius:4px">part</span></td><td class="num">349K</td>
+            <td><span class="c-ok" style="padding:2px 7px;border-radius:4px">ok</span></td><td class="num">389K</td>
+          </tr>
+          <tr style="background:#f7f2e8">
+            <td><b>v4c（PR#3 後）</b></td>
+            <td><span class="c-ok" style="padding:2px 7px;border-radius:4px">ok</span></td><td class="num">1484K <span style="color:var(--good)">↓24%</span></td>
+            <td><span class="c-ok" style="padding:2px 7px;border-radius:4px">ok</span></td><td class="num">617K <span style="color:var(--over)">↑77%</span></td>
+            <td><span class="c-ok" style="padding:2px 7px;border-radius:4px">ok</span></td><td class="num">730K <span style="color:var(--over)">↑88%</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout acc" style="margin-top:18px">
+      <span class="lab">主要發現</span>
+      <p><b>Opus case-10 part → ok</b>（+0.5）是最可能跟 PR#3 有關的改變：加了 <code>ORDER_STATUS_KEYS = Order.statuses.keys.freeze</code> 之後，Opus 能在 <code>order_change_status_context.rb</code> 直接看到顯式常數，並正確歸納「改名要動 4 個 file」而非把間接的 <code>status_i18n</code> 呼叫也算進去。</p>
+      <p><b>Codex case-7 bad → part</b>（+0.5）較可能是 n=1 隨機變異，因為 PR#3 沒碰 source_type 相關邏輯。</p>
+      <p><b>case-7 judge 沒有改善</b>：這符合預期 —— PR#3 改的是 <code>order_change_status_context.rb</code> 和 <code>notify.rb</code>，跟 source_type polymorphic 問題無關。要改善 case-7 需要 PR#1（base_logger）+ PR#2（i18n cluster）。</p>
+      <p><b>ctx 普遍下降</b>：v4c 的 Haiku / Codex ctx 都有 16~46% 改善，Opus case-10 反升（多繞一次驗 ORDER_STATUS_KEYS 的意義）。</p>
+    </div>
+
+    <div class="callout warn" style="margin-top:14px">
+      <span class="lab">假設部分驗證</span>
+      <p>「改 code 讓 LLM 看穿」假設拿到 <b>方向性訊號</b>（n=1）。下一步是 PR#2（admin view_models i18n cluster，case-10 / case-7 都有直接命中），跑完可以看是否拿到更強的信號。如果 PR#2 後 Haiku case-7 能從 part → ok，假設就強得多。</p>
+    </div>
   </div>
 </section>
 
