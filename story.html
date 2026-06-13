@@ -93,36 +93,55 @@
 
 <section>
   <div class="wrap">
+    <p class="kicker">結論先講</p>
+    <h2>三句話總結</h2>
+    <div class="callout">
+      <div class="h">如果只看這段</div>
+      <p>① <b>工具有沒有用，取決於題型</b>：結構關係題（找 caller / 關聯穿透 / namespace 解析）靜態索引明顯贏 grep；純字串題 grep 就到頂，加索引是浪費。<br>
+      ② <b>「該用哪個工具」的決策要放在程式層、不能交給模型自己判斷</b>——但即使派對工具，餵太多上下文反而會讓強模型把 bug 合理化掉。<br>
+      ③ <b>有一類寫法（執行期用字串建構名稱、且無固定前綴、又要跨檔反推）靜態工具全軍覆沒</b>，再強的模型也救不回——這類唯一的根本解是改 code，且效益不隨模型版本過時。</p>
+    </div>
+    <p class="sub">以下是怎麼測出這三點的：方法、15 個 case 的成績、五輪的決策過程、被挑戰時站不站得住。</p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <p class="kicker">背景</p>
     <h2>為什麼測這個</h2>
-    <p>LLM 要改一段 code，前提是先看懂它：這個 method 被誰呼叫、這個關聯指到哪個 model、改個名字會波及哪些檔。Ruby / Rails 大量使用「執行期才成形」的寫法（<code>delegate</code>、<code>method_missing</code>、<code>constantize</code>、polymorphic association），很多對應關係不寫在明面上，grep 找不到、靜態分析也未必追得到。</p>
+    <p>LLM 要改一段 code，前提是先看懂它：這個 method 被誰呼叫、這個關聯指到哪個 model、改個名字會波及哪些檔。Ruby / Rails 大量使用「執行期才成形」的寫法（<code>delegate</code> 隱式 method、<code>method_missing</code> 轉發、<code>constantize</code> 字串轉常數、polymorphic association），很多對應關係不寫在原始碼明面上，grep 抓不到、靜態分析也未必追得到。</p>
     <p>問題具體化成一句：<b>給 LLM 程式碼搜尋工具，它能不能查得更快、更省 token，又不犧牲答案品質？</b>更快跟更省其實同源——少繞幾輪、少讀幾個檔，token 跟時間一起降。</p>
   </div>
 </section>
 
 <section>
   <div class="wrap">
-    <h2>方法</h2>
+    <p class="kicker">方法</p>
+    <h2>怎麼測</h2>
 
-    <h3>15 個 case，每個對應一種 Ruby 寫法</h3>
-    <p class="sub">每個 case 取自生產 Rails codebase（已匿名），都有人工驗證過的標準答案。</p>
+    <h3>查詢的 codebase 規模</h3>
+    <p>case 取自 <b>3 個生產 Rails 專案</b>（已匿名），合計 <b>5,501 個 <code>.rb</code> 檔</b>（單一專案 1,313 / 2,757 / 1,431）。這點很重要：在近 3,000 檔的單一 repo 裡「找全某 method 的所有 caller」，跟在玩具專案裡找完全是兩回事——下面所有 recall 數字都要放在這個尺度下讀。codebase 越大，純 grep 的雜訊與漏報越嚴重，靜態索引的價值也越被放大。</p>
+
+    <h3>15 個 case，每個對應一種具名的 Ruby/Rails 寫法</h3>
+    <p class="sub">每題都有人工驗證過的標準答案。「典型陷阱」欄是這個寫法為何讓 grep / 靜態分析失準。</p>
     <div class="tbl-wrap">
       <table>
-        <thead><tr><th>case</th><th>Ruby 寫法</th><th>這題在考什麼</th></tr></thead>
+        <thead><tr><th>case</th><th>寫法（手法）</th><th>典型陷阱</th></tr></thead>
         <tbody>
-          <tr><td class="cid">1</td><td><code>has_one</code> + <code>delegate</code> 鏈</td><td>找全會打到某欄位的呼叫點（含關聯穿透、delegate 隱式 method）</td></tr>
-          <tr><td class="cid">2</td><td><code>public_send("do_#{state}!")</code></td><td>AASM 動態 event：找直接呼叫 vs 字串建構呼叫</td></tr>
-          <tr><td class="cid">3</td><td><code>class_eval</code> heredoc 生方法</td><td>某 method 的「動態定義位置」（沒有 <code>def</code> 字樣）</td></tr>
-          <tr><td class="cid">4 / 4A</td><td>多 namespace 同名 class</td><td>給/不給 FQN，找全引用並按 namespace 分組</td></tr>
-          <tr><td class="cid">5</td><td>YAML 字串指 worker class</td><td>找全引用，含 config 檔裡的字串</td></tr>
-          <tr><td class="cid">6</td><td>重開 <code>Object</code> monkey-patch</td><td>找 patch 定義位置 + 所有 caller</td></tr>
-          <tr><td class="cid">7</td><td>polymorphic + 自訂短字串 <code>source_type</code></td><td>列出所有字串值、反推對應 model、揪出無對應的 silent bug</td></tr>
-          <tr><td class="cid">8</td><td>Zeitwerk 短形式常數</td><td>找全引用，含短形式與完整 FQN 混用</td></tr>
-          <tr><td class="cid">9</td><td>callback symbol → method</td><td>列 model 所有 callback，驗 symbol 對應的 method 是否存在</td></tr>
-          <tr><td class="cid">10</td><td><code>t("a.b.#{var}")</code> 動態 i18n key</td><td>找全 key 引用（直接 + 動態組合），推變數可能值</td></tr>
-          <tr><td class="cid">11</td><td>4 層 nested routes path helper</td><td>反推 routes 宣告 + controller#action + caller</td></tr>
-          <tr><td class="cid">12</td><td><code>method_missing</code> 轉發</td><td>分辨哪些 method 自己定義、哪些是轉發</td></tr>
-          <tr><td class="cid">13</td><td>hash dispatch 表（字串→class）</td><td>找 lookup 位置 + codebase 內類似的 dispatch 表</td></tr>
-          <tr><td class="cid">14</td><td>rename 影響面</td><td>改一個名字要動到的所有檔</td></tr>
+          <tr><td class="cid">1</td><td><code>has_one</code> 關聯 + <code>delegate ... to:</code> 雙重隱式 method</td><td>呼叫鏈 <code>presenter.field → assoc.field</code> 全程無 <code>def</code>；grep <code>def field</code> 漏 schema column、delegate、關聯穿透</td></tr>
+          <tr><td class="cid">2</td><td>AASM 狀態機 + <code>public_send("do_#{state}!")</code></td><td>event method 名是執行期才拼出的字串；但前綴 <code>do_</code> 固定，grep <code>do_.*!</code> 仍可命中</td></tr>
+          <tr><td class="cid">3</td><td><code>class_eval</code> + heredoc 動態定義 method</td><td><code>def info</code> 在 heredoc 字串內，不在語法樹；grep 與靜態 AST 都看不到</td></tr>
+          <tr><td class="cid">4 / 4A</td><td>同名 class 散落多 namespace（DDD 分層）</td><td><code>A::B::Invoice</code> vs <code>A::C::Invoice</code>；grep <code>Invoice</code> 混在一起無法分組，需 nested constant resolution</td></tr>
+          <tr><td class="cid">5</td><td>Sidekiq scheduler YAML 以字串名指 worker，靠 runtime <code>constantize</code></td><td>靜態索引只看 <code>.rb</code>，看不到 yaml 字串引用</td></tr>
+          <tr><td class="cid">6</td><td>重開 <code>Object</code> 加 method（monkey patch）</td><td>定義在 helper、實際 patch 全域 Object；索引不展開影響範圍</td></tr>
+          <tr><td class="cid">7</td><td>polymorphic association，<code>source_type</code> 存自訂短字串（非 class FQN）</td><td><code>'adjustment'.classify.constantize</code> 解不到真 model；對應關係散在各檔的 dispatch 邏輯</td></tr>
+          <tr><td class="cid">8</td><td>Zeitwerk autoload + nested constant 短形式（<code>Repositories::Invoice</code>）</td><td>grep 完整 FQN 漏短形式，grep 短形式漏跨 namespace 的 FQN</td></tr>
+          <tr><td class="cid">9</td><td>callback symbol 隱式綁 method（<code>before_save :foo</code>）</td><td><code>:foo</code> 是 symbol 不是 constant，索引不認這層綁定；改名漏改是 silent bug</td></tr>
+          <tr><td class="cid">10</td><td>i18n key tree + <code>t("a.b.#{var}")</code> 動態 lazy lookup</td><td>索引不看 yml；動態組鍵連 grep 都要先推 <code>var</code> 可能值</td></tr>
+          <tr><td class="cid">11</td><td>4 層 <code>namespace + resources</code> 自動生成 path helper</td><td>helper 名（<code>edit_admin_x_y_z_path</code>）不在原始碼，要懂 Rails 命名規則才反推得到 routes 宣告</td></tr>
+          <tr><td class="cid">12</td><td><code>SimpleDelegator</code> / 自訂 <code>method_missing</code> 轉發到 inner object</td><td>沒實際執行，只能讀 <code>def</code> + 推 <code>@inner</code> 的型別來分辨自有 method vs 轉發</td></tr>
+          <tr><td class="cid">13</td><td>hash dispatch 表：<code>{ 'String' =&gt; Class }.freeze</code> + <code>HASH[key]</code> runtime lookup</td><td>索引看得到常數定義，看不到 <code>HASH[key]</code> 取值，也看不出與其他 dispatch 表的相似性</td></tr>
+          <tr><td class="cid">14</td><td>跨檔 rename：改一個 class/method 名的影響面</td><td>要同時涵蓋 FQN、短形式、字串引用、隱式綁定才算全</td></tr>
         </tbody>
       </table>
     </div>
@@ -138,6 +157,7 @@
 
 <section>
   <div class="wrap">
+    <p class="kicker">結果</p>
     <h2>15 個 case 的成績</h2>
     <p class="sub">分數越高越好（0–1）。orchestrator 欄是 V4 程式層派工具的結果。<span class="s-lo">紅</span>=該題弱項。</p>
 
@@ -179,6 +199,7 @@
 
 <section>
   <div class="wrap">
+    <p class="kicker">過程</p>
     <h2>五輪實驗：每輪的結果與決定</h2>
     <p class="sub">每輪都是被上一輪的結果逼出來的。下面標清楚「測到什麼 → 所以決定做什麼」。</p>
 
@@ -204,6 +225,7 @@
 
 <section>
   <div class="wrap">
+    <p class="kicker">分析</p>
     <h2>為什麼 case-7 全軍覆沒</h2>
     <p>case-7 是唯一一題所有策略、所有模型都低於 0.5 的（grep .00 / 索引 .17 / orchestrator .33）。它的寫法是 polymorphic association 的 <code>source_type</code> 欄位<b>不存 class 全名，存自訂短字串</b>：</p>
     <pre><span class="c"># source_type 存的是 'adjustment' 這種短字串，不是 class 名</span>
@@ -222,6 +244,7 @@ belongs_to :source, polymorphic: true
 
 <section>
   <div class="wrap">
+    <p class="kicker">結論</p>
     <h2>結論</h2>
     <p>三個，都對得回上面的數據：</p>
     <ul>
@@ -266,12 +289,15 @@ belongs_to :source, polymorphic: true
 
 <section>
   <div class="wrap">
-    <h2>方法學限制</h2>
+    <p class="kicker">限制</p>
+    <h2>可能被挑戰的點，先講在前面</h2>
+    <p class="sub">這份東西禁不禁得起追問，取決於下面這幾條有沒有講清楚。</p>
     <ul>
-      <li><b>n=1</b>：每格只跑一次，單次變異大。所有分數是方向訊號，不是定論；±0.5 的個案差異不應過度解讀。</li>
-      <li><b>單一 judge</b>：判讀題由同一個評分者判，避免標準漂移，但仍是主觀。</li>
-      <li><b>3 模型、15 case</b>：樣本小。結論（題型分工、case-7 全崩、改 code 見效）方向夠強，但模型內個案需更多 N。</li>
-      <li><b>單一 codebase 家族</b>：case 取自同一組生產 Rails 專案，pattern 分布未必代表所有 Ruby 專案。</li>
+      <li><b>「n=1，憑什麼下結論？」</b>——每格只跑一次，單次變異大。所以本報告只主張<b>方向訊號</b>，不主張精確值；像 case-7 全 &lt;.5、case-4 索引 .67→1.0 這種大落差才當數，±0.5 的個案差異不解讀。要發表級結論需每格取多次中位數。</li>
+      <li><b>「judge 是你自己評的，會不會偏？」</b>——判讀題由<b>單一評分者</b>用固定 rubric（漏報重罰、過報輕罰）評，跨版本重判時附錨點驗標準漂移。但仍是主觀，沒有跑跨評分者一致性。</li>
+      <li><b>「codebase 大小不同，數字能比嗎？」</b>——所有條件（grep / 索引 / orchestrator）都在<b>同一批 5,501 檔的專案上跑同一題</b>，是同尺度對照，差異來自策略不是規模。但反過來說，結論只保證在「<b>數千檔量級的生產 Rails</b>」成立；小專案上 grep 的雜訊少，索引的優勢可能縮小。</li>
+      <li><b>「case 是你挑的，會不會專挑工具贏/輸的？」</b>——15 個 case 是<b>先列 Ruby/Rails 寫法分類、再每類取題</b>（見方法表），不是先看結果再選題。但 pattern 的分布權重（哪種寫法多）來自這組專案，未必代表所有 codebase。</li>
+      <li><b>「只測 3 個模型、會不會換一個就翻盤？」</b>——刻意取一弱一中一強。三模型分裂（同題不同結論，如 case-7）本身就是結論之一，但模型內個案仍需更多 N 才能歸納「某模型適合某策略」。</li>
     </ul>
   </div>
 </section>
