@@ -76,7 +76,7 @@
   <div class="wrap">
     <span class="kicker">Ruby Code Search × LLM Benchmark · V1→V5</span>
     <h1>工具能不能讓 LLM 更會查 Ruby code？</h1>
-    <p class="lede">目標明確：<b>在不犧牲答案品質的前提下，降低成本、提升效率</b>。15 個真實 Rails case、3 個模型、三種搜尋策略，跑了五輪——本頁說明測了什麼、怎麼測、哪個數字得出哪個結論。</p>
+    <p class="lede">目標只有兩個：<b>查得更快、花得更少</b>——前提是答案品質不能掉。15 個真實 Rails case、3 個模型、三種搜尋策略，跑了五輪，本頁說明測了什麼、怎麼測、哪個數字得出哪個結論。</p>
     <div class="vswitch">
       <a class="cur" href="./story.html">總覽</a>
       <a href="./index.html">V1</a>
@@ -92,7 +92,7 @@
   <div class="wrap">
     <h2>為什麼測這個</h2>
     <p>LLM 要改一段 code，前提是先看懂它：這個 method 被誰呼叫、這個關聯指到哪個 model、改個名字會波及哪些檔。Ruby / Rails 大量使用「執行期才成形」的寫法（<code>delegate</code>、<code>method_missing</code>、<code>constantize</code>、polymorphic association），很多對應關係不寫在明面上，grep 找不到、靜態分析也未必追得到。</p>
-    <p>問題具體化成一句：<b>給 LLM 程式碼搜尋工具，它查得會不會更準、更省 token？哪種題該配哪種工具？換模型結論會不會翻盤？</b></p>
+    <p>問題具體化成一句：<b>給 LLM 程式碼搜尋工具，它能不能查得更快、更省 token，又不犧牲答案品質？</b>更快跟更省其實同源——少繞幾輪、少讀幾個檔，token 跟時間一起降。</p>
   </div>
 </section>
 
