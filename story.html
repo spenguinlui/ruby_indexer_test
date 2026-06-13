@@ -267,8 +267,8 @@
 <section>
   <div class="wrap">
     <p class="kicker">分析</p>
-    <h2>為什麼 case-7 全軍覆沒</h2>
-    <p>case-7 是唯一一題所有策略、所有模型都低於 0.5 的（grep .00 / 索引 .17 / orchestrator .33）。它的寫法是 polymorphic association 的 <code>source_type</code> 欄位<b>不存 class 全名，存自訂短字串</b>：</p>
+    <h2>一類讓所有工具都失效的寫法</h2>
+    <p>整批 case 裡只有一種寫法，是所有策略、所有模型都低於 0.5 的（case-7：grep .00 / 索引 .17 / orchestrator .33）。值得拆解它為什麼無解——因為這正是「該優先改寫」的代表。它是 polymorphic association 的 <code>source_type</code> 欄位<b>不存 class 全名，改存自訂短字串</b>：</p>
     <pre><span class="c"># source_type 存的是 'adjustment' 這種短字串，不是 class 名</span>
 belongs_to :source, polymorphic: true
 <span class="c"># 'adjustment'.classify.constantize → Adjustment（頂層不存在）→ 解不到</span>
@@ -286,12 +286,24 @@ belongs_to :source, polymorphic: true
 <section>
   <div class="wrap">
     <p class="kicker">結論</p>
-    <h2>結論</h2>
-    <p>三個，都對得回上面的數據：</p>
+    <h2>結論：三個能直接做的決定</h2>
+    <p>每一點都對得回前面的數據，也都有一個明確的下一步動作。</p>
     <ul>
-      <li><b>工具效果取決於題型，不是越多越好。</b>結構題（case-1/4/13）靜態索引贏 grep；字串題（case-5/6）grep 就滿分，加索引浪費。混用甚至有害（V4 餵太多上下文 → case-7 想錯）。</li>
-      <li><b>選工具的決策要放程式層，不是 prompt。</b>V3 賭模型自律失敗；V4 程式按題型派工具才把找檔分數穩定拉起來。</li>
-      <li><b>少數寫法靜態無解，改 code 才是根本解。</b>case-7、case-3 這類「答案不在靜態結構裡」的，所有工具所有模型都低分；改寫後（case-3 已實測）立刻見效。而且改 code 的好處對 grep、索引、所有模型通用，不會因為下個模型發布而過時。</li>
+      <li>
+        <b>① 別把工具全開，按題型派。</b>
+        加靜態索引不是「免費的保險」——對字串題它毫無幫助（case-5/6 純 grep 已 1.0），還白付建索引與餵 context 的成本，甚至害模型想錯（case-7）。
+        <br><b>Action：</b>建立「結構關係題 → 靜態索引、純字串題 → grep」的對照，同一套工具不要打所有題。
+      </li>
+      <li>
+        <b>② 派工具的決策放程式層，別寫進 prompt 賭模型自律。</b>
+        V3 讓模型自己照規則選工具，弱模型該用不用、強模型亂用，等於沒分類。
+        <br><b>Action：</b>做一層外部 router（如 V4 orchestrator）按 query 類型硬性派工具——這一步就把找檔 recall 穩定拉起、token 砍約三成。
+      </li>
+      <li>
+        <b>③ 投報率最高的一步是改 code，不是換更強的工具或模型。</b>
+        有一類寫法連「最強工具 × 最強模型」都解不到（case-7 全 &lt;.5）；但只要改成靜態追得到的形式，<b>最弱的模型都能一眼看穿</b>（case-3 改寫後 part→ok）。差別在 code，不在工具。
+        <br><b>Action：</b>照下面的 Tier 表退役「先改」那層。這個投資對 grep、索引、所有模型通用，且<b>不隨模型版本過時——工具會過時，好 code 不會</b>。
+      </li>
     </ul>
 
     <h3>哪些寫法該優先退役</h3>
