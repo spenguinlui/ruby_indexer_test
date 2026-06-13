@@ -65,6 +65,9 @@
   .callout.warn .h{color:var(--over)}
   .callout p{margin:4px 0 0; font-size:14.5px}
 
+  .decision{font-size:14px; background:#f7f2e8; border:1px solid var(--line-strong); border-radius:8px; padding:10px 14px; margin:8px 0 4px}
+  .decision b{font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin-right:8px}
+
   footer{padding:36px 0 64px; color:var(--muted); font-size:13px}
   footer .links{display:flex; flex-wrap:wrap; gap:9px; margin:12px 0 16px}
   footer .links a{font-family:var(--mono); font-size:12px; text-decoration:none; color:var(--accent); border:1px solid var(--line-strong); border-radius:8px; padding:5px 11px}
@@ -176,21 +179,26 @@
 
 <section>
   <div class="wrap">
-    <h2>五輪實驗，逐輪的問題與數據</h2>
+    <h2>五輪實驗：每輪的結果與決定</h2>
+    <p class="sub">每輪都是被上一輪的結果逼出來的。下面標清楚「測到什麼 → 所以決定做什麼」。</p>
 
-    <h3>V1–V2：給工具有沒有用？看題型</h3>
-    <p>對照同一批 case 的 grep vs 靜態索引：<b>結構題</b>（case-1 找關聯穿透 .62→.81、case-4 namespace .67→1.0）索引明顯贏；<b>字串題</b>（case-5 YAML、case-6 monkey-patch）兩者都 1.0，加索引純屬多餘。<b>工具有適用範圍，不是越多越好。</b></p>
+    <h3>V1–V2：給工具有沒有用？</h3>
+    <p><b>結果：</b>對照同一批 case 的 grep vs 靜態索引——<b>結構題</b>（case-1 關聯穿透 .62→.81、case-4 namespace .67→1.0）索引明顯贏；<b>字串題</b>（case-5 YAML、case-6 monkey-patch）兩者都 1.0，加索引純屬多餘。工具有適用範圍，不是越多越好。</p>
+    <p class="decision"><b>決定</b>既然不是全有用，真正要解的不是「要不要給工具」，而是「<b>哪種題該用哪個工具</b>」。下一步：試著讓模型自己判斷該用哪個 → V3。</p>
 
     <h3>V3：讓模型自己選工具</h3>
-    <p>在 prompt 寫規則「結構題才用索引、字串題用 grep」，賭模型照做。實測：弱模型該用時不用、強模型不該用時猛用，命中率跟「工具全開」差不多。<b>選工具的判斷交給模型 prompt 不可靠。</b></p>
+    <p><b>結果：</b>在 prompt 寫規則「結構題才用索引、字串題用 grep」，賭模型照做。實測弱模型該用時不用、強模型不該用時猛用，命中率跟「工具全開、不分類」差不多——等於沒分類。</p>
+    <p class="decision"><b>決定</b>選工具的判斷靠模型自律不可靠。把這個決策從 prompt 抽出來，<b>移到一層外部程式</b>按題型硬性派工具 → V4。</p>
 
-    <h3>V4：把選工具搬到程式層</h3>
-    <p>改由外層程式（orchestrator）按題型自動派工具。<b>找檔變準也變省</b>——case-1 強模型 recall 0.64→1.0、整體 token 砍約三成；case-11 routes 從 .83 升到 1.0。</p>
-    <p>但出現反效果：工具一次餵大量「高信心」上下文後，<b>模型反而想錯</b>。case-7 強模型把真 silent bug「合理化」掉（part→bad）——它看到一個同名但在別的 namespace 的 model 存在，就認定字串有對應，忽略了 <code>constantize</code> 實際上解不到。同一份上下文，中模型卻靠分組推理答對。<b>工具給的是資料，不是判斷力；資料給太多，強模型會用它說服自己。</b></p>
+    <h3>V4：把選工具搬到程式層（orchestrator）</h3>
+    <p><b>結果（好的一面）：</b>外層程式按題型自動派工具，<b>找檔變準也變省</b>——case-1 強模型 recall 0.64→1.0、整體 token 砍約三成、case-11 routes 從 .83 升到 1.0。方向對了。</p>
+    <p><b>結果（壞的一面）：</b>工具一次餵大量「高信心」上下文後，<b>模型反而想錯</b>。case-7 強模型把真 silent bug 合理化掉（part→bad）——看到一個同名但在別 namespace 的 model 存在，就認定字串有對應，忽略 <code>constantize</code> 實際解不到。同一份上下文，中模型卻靠分組推理答對。工具給的是資料，不是判斷力。</p>
+    <p class="decision"><b>決定</b>兩條線索：(1) 強弱模型在「找檔」和「推理」上表現分裂 → 想把兩件事拆給不同模型做；(2) case-7 / case-3 這種題答案根本不在靜態結構裡，工具再強也沒用 → 該回頭改 code。V5 兩個方向一起試。</p>
 
-    <h3>V5：兩個方向</h3>
-    <p><b>方向 A，拆分工：</b>弱模型負責找檔、強模型只負責推理。推理那段 token 砍到極低（15 題合計約 175K），但整體品質下滑——找檔 recall 0.89→0.74、判讀 8.5→6.5（滿分 9）。原因是弱模型找檔本來就比強模型差，交給下游的料不全，再強的推理也補不回來。</p>
-    <p><b>方向 B，改 code：</b>把 case-3 的 <code>class_eval</code> 動態生方法，改寫成 6 個普通 <code>def</code>。同一套流程重跑，模型從「答得出機制但給不出精確行號」（part）變成「直接命中 <code>def info</code> 在第 17 行」（ok）。<b>這是整個系列第一次看到改 code 直接把分數拉起來。</b></p>
+    <h3>V5：兩階段分工，以及改 code</h3>
+    <p><b>方向 A 結果（拆分工）：</b>弱模型找檔、強模型只推理。推理那段 token 砍到極低（15 題合計約 175K），但整體品質掉了——找檔 recall 0.89→0.74、判讀 8.5→6.5（滿分 9）。瓶頸是弱模型找檔本來就差，給下游的料不全，再強的推理也補不回來。</p>
+    <p><b>方向 B 結果（改 code）：</b>把 case-3 的 <code>class_eval</code> 動態生方法改寫成 6 個普通 <code>def</code>，同流程重跑，模型從「答得出機制但給不出行號」（part）變成「直接命中 <code>def info</code> 在第 17 行」（ok）。整個系列第一次看到改 code 直接把分數拉起來。</p>
+    <p class="decision"><b>決定</b>拆分工不划算（弱模型找檔是死結）；改 code 是唯一對「靜態無解」題有效、又不會隨下個模型發布而過時的根本解。收斂成一份「哪些寫法該退役」的準則（見下方結論）。</p>
   </div>
 </section>
 
