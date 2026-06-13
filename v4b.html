@@ -235,8 +235,8 @@
     <div class="tldr">
       <span class="lab">一句話結論</span>
       <p><strong>V4-β.2(orchestrator + rails-dsl)不是「下一代 V4」,是有強烈題型 × 模型相依的 selective add-on。對 Codex 強模型而言:rails-dsl 把它變成 machine-recall 完美機(0.857→1.000、ctx −30%),代價是 value 大降(8.5→6.0,計數與 silent bug 推理題崩);對 Opus 個案性勝(case-7 silent bug bad→ok);對 Haiku 雙降,連最該贏的主場 case-11 都因 1-shot 答案後撞 cwd 衝突直接拒絕作答。</strong></p>
-      <p><strong>最戲劇的反諷是 Haiku case-11 routes-helper</strong>(rails-dsl 的指定主場題):context 從 1209K 砍到 80K、rdx 呼叫從 19 變 0,理論上是 β.2 該大勝的場景。但 Haiku 拿到 rails-dsl 一次給回的完整答案後,撞到「cwd（工作目錄）在 /Users/liu/ruby_indexer、但 project_root 在 /Users/liu/sunnyfounder/e_trading」的工具路徑衝突,直接拒絕作答 → <code>bad</code>。<strong>給太多 high-confidence 上下文,弱模型反而被看似 instruction 矛盾的訊號搞亂。</strong></p>
-      <p><strong>強模型的二次 trade-off</strong>:Codex machine 全綠(case-1 delegate 鏈 recall 0.64→1.00 +36pp、ctx −45%),但同樣的「rails-dsl 給高 confidence Rails 知識」上下文,在 case-7 polymorphic silent bug 題上讓 Codex 把 <code>'income_expense'</code> <i>解讀</i>成 <code>ElectricityAccounting::ChargesCalculation::FixedCharge::Models::IncomeExpense</code>(named with high confidence)→ explain-away（用旁證合理化掉真正的 bug）silent bug → <code>part → bad</code>。在 case-4/4A 計數題上 total 從 ~100/145 暴跌到 41/58(−60%),疑似 top_k truncation（候選列表被截斷）或 false-confidence「我都看完了」early termination。</p>
+      <p><strong>最戲劇的反諷是 Haiku case-11 routes-helper</strong>(rails-dsl 的指定主場題):context 從 1209K 砍到 80K、rdx 呼叫從 19 變 0,理論上是 β.2 該大勝的場景。但 Haiku 拿到 rails-dsl 一次給回的完整答案後,撞到「cwd（工作目錄）在 &lt;benchmark_cwd&gt;、但 project_root 在 &lt;project_root&gt;」的工具路徑衝突,直接拒絕作答 → <code>bad</code>。<strong>給太多 high-confidence 上下文,弱模型反而被看似 instruction 矛盾的訊號搞亂。</strong></p>
+      <p><strong>強模型的二次 trade-off</strong>:Codex machine 全綠(case-1 delegate 鏈 recall 0.64→1.00 +36pp、ctx −45%),但同樣的「rails-dsl 給高 confidence Rails 知識」上下文,在 case-7 polymorphic silent bug 題上讓 Codex 把 <code>'adjustment'</code> <i>解讀</i>成 <code>Billing::Charges::Models::Adjustment</code>(named with high confidence)→ explain-away（用旁證合理化掉真正的 bug）silent bug → <code>part → bad</code>。在 case-4/4A 計數題上 total 從 ~100/145 暴跌到 41/58(−60%),疑似 top_k truncation（候選列表被截斷）或 false-confidence「我都看完了」early termination。</p>
       <p><strong>三個 caveat</strong>:① 全程 <strong>n=1</strong>,單次變異大,所有結論都是方向訊號。② β.2 的 rails-dsl 對「Rails-aware 但非 Rails-knowledge 黑洞」題型(case-8/10 Haiku 略升)有閃光,但 main path(case-1/13)反而受傷。③ Opus 的 case-7 win 是真的、但同模型 case-10 也從 ok 退到 part —— 個案性 win 不能歸納成「Opus 適合 β.2」,需要更多 N。</p>
     </div>
   </div>
@@ -331,7 +331,7 @@
       </div>
       <div class="body">
         <p><b>Machine 大勝</b>:file-recall 0.857 → <b>1.000</b>(滿分),aggregate ctx 4024K → 2825K(−30%)。最大個案是 <b>case-1 delegate 鏈</b>:0.64 → 1.0(+36pp)、ctx 984K → 537K(−45%)、rdx 80 → 44(−45%)。rails-dsl backend 直接命中 has_one + delegate 關聯,Codex 不需要反覆換 query 湊 refs。case-13 hash dispatch、case-14 rename 也都維持 1.0。這是 rails-dsl 對強模型「Rails-aware locate 題」的純贏。</p>
-        <p><b>Value 大降</b>:judge score 8.5 → <b>6.0</b>(−2.5,三題崩盤)。<b>case-4</b> invoice-fqn:total 98 → 41(−60%),Codex 只列範例行而沒展開 spec 檔案多行(<code>void_current_invoice_spec.rb</code> 12 行只列 1 行等)。<b>case-4A</b> invoice-no-fqn:total 148 → 58(−60%),4 buckets 全部嚴重 undercounted,類別都對但每類數字崩。可能 top_k truncation 或 early termination 在 orchestrator path 觸發。<b>case-7</b> silent bug:rails-dsl 餵的 polymorphic 上下文把 <code>income_expense</code> <i>解讀</i>成 <code>ElectricityAccounting::ChargesCalculation::FixedCharge::Models::IncomeExpense</code>(named with high confidence),反而「explain away」了 silent bug。其他真 bug(Revenue::Due 等)有列、但漏 income_expense 是答案核心。</p>
+        <p><b>Value 大降</b>:judge score 8.5 → <b>6.0</b>(−2.5,三題崩盤)。<b>case-4</b> invoice-fqn:total 98 → 41(−60%),Codex 只列範例行而沒展開 spec 檔案多行(<code>void_record_spec.rb</code> 12 行只列 1 行等)。<b>case-4A</b> invoice-no-fqn:total 148 → 58(−60%),4 buckets 全部嚴重 undercounted,類別都對但每類數字崩。可能 top_k truncation 或 early termination 在 orchestrator path 觸發。<b>case-7</b> silent bug:rails-dsl 餵的 polymorphic 上下文把 <code>adjustment</code> <i>解讀</i>成 <code>Billing::Charges::Models::Adjustment</code>(named with high confidence),反而「explain away」了 silent bug。其他真 bug(Ledger::Charge 等)有列、但漏 adjustment 是答案核心。</p>
         <p><b>解讀</b>:β.2 對 Codex 是「machine 換 value」trade-off,不是純優化。rails-dsl 給的 Rails-knowledge 讓它精準 routing(找對檔)+ 同樣的高 confidence 上下文讓它在窮舉計數題 early-terminate、在 silent bug 推理題 explain-away。<b>Rails-knowledge 是雙刃劍</b>。</p>
       </div>
     </div>
@@ -345,7 +345,7 @@
       </div>
       <div class="body">
         <p><b>Machine 中性偏正</b>:file-recall 0.845 → 0.887(+4pp)。case-2 AASM(0.83→1.0)、case-14 rename(0.88→1.0)、case-5/6/13/14 全 1.0 或維持。但 case-1 delegate 反向(0.86→0.57),跟 Codex 那邊衝突 → backend 對 delegate 鏈題不是普遍 win。ctx 1395K → 1770K(+27%),Opus 拿到 backend 答案後常再呼叫 rubydex 二次驗證,所以 ctx 反增。</p>
-        <p><b>Value 個案性升</b>:judge 8.0 → 8.5(+0.5),完全靠 <b>case-7 silent bug 大躍進</b>(bad→ok,+2 跳)。Opus 明確套用 rails-dsl 提供的 <code>belongs_to :source, polymorphic</code> 上下文,把 source_type 分成「A 類真 polymorphic」vs「B 類 sentinel by design」兩組,正確把 <code>income_expense</code> 歸入 silent bug 候選,<b>bonus</b> 還抓到 <code>'period'</code> / 裸 <code>'ElectricBill'</code> 也是 production silent bug。rails-dsl polymorphic backend 在 Opus 身上是純贏。</p>
+        <p><b>Value 個案性升</b>:judge 8.0 → 8.5(+0.5),完全靠 <b>case-7 silent bug 大躍進</b>(bad→ok,+2 跳)。Opus 明確套用 rails-dsl 提供的 <code>belongs_to :source, polymorphic</code> 上下文,把 source_type 分成「A 類真 polymorphic」vs「B 類 sentinel by design」兩組,正確把 <code>adjustment</code> 歸入 silent bug 候選,<b>bonus</b> 還抓到 <code>'cycle'</code> / 裸 <code>'ElectricBill'</code> 也是 production silent bug。rails-dsl polymorphic backend 在 Opus 身上是純贏。</p>
         <p>但 case-10 反向(ok→part):Opus 漏列 <code>_aasm_log.html.slim:22</code>(to_state)跟 <code>_order.html.slim:210</code>(to_state)兩個 mirror 行,只列了 from_state 那組。5 個動態 sites 漏 2 個。<b>n=1 random drift,但 part 是真的</b> —— 不能歸納「Opus 適合 β.2」。</p>
       </div>
     </div>
@@ -359,7 +359,7 @@
       </div>
       <div class="body">
         <p><b>Machine 大降</b>:file-recall 0.958 → 0.827(−13pp)。case-1 delegate(1.0→0.71)、case-13 hash dispatch(0.75→0.25)是主要傷害區。Haiku 拿到 rails-dsl backend 結果後似乎太信、不再用其他通道補,單一通道的失誤直接反映在 recall。ctx −21% 看似省、實際是「拿到 1-shot 答案就停」的副作用。</p>
-        <p><b>Value 雙降</b>:judge 7.0 → 6.0(−1.0)。<b>case-11 routes-helper 是 β.2 設計缺陷的具體展現</b>:這題本是 rails-dsl 主場,context 從 1209K 砍到 80K、rdx 19→0,理論上應該大勝。但 Haiku 拿到 rails-dsl 1-shot 答案後仍想自己 Read 檔案驗證,撞到「cwd 在 <code>/Users/liu/ruby_indexer</code>、project_root 在 <code>/Users/liu/sunnyfounder/e_trading</code>」的工具路徑不一致,<b>直接拒絕作答</b>(回說「不能 access」)→ <code>ok → bad</code>。最戲劇的反諷:<b>主場題在 backend 完美命中時、模型自己 bail。</b></p>
+        <p><b>Value 雙降</b>:judge 7.0 → 6.0(−1.0)。<b>case-11 routes-helper 是 β.2 設計缺陷的具體展現</b>:這題本是 rails-dsl 主場,context 從 1209K 砍到 80K、rdx 19→0,理論上應該大勝。但 Haiku 拿到 rails-dsl 1-shot 答案後仍想自己 Read 檔案驗證,撞到「cwd 在 <code>&lt;benchmark_cwd&gt;</code>、project_root 在 <code>&lt;project_root&gt;</code>」的工具路徑不一致,<b>直接拒絕作答</b>(回說「不能 access」)→ <code>ok → bad</code>。最戲劇的反諷:<b>主場題在 backend 完美命中時、模型自己 bail。</b></p>
         <p><b>但有閃光點</b>:case-8 短形式↔FQN(22→25 part→ok)、case-10 i18n(part→ok)兩個 Rails-aware 題型小升。case-8 救起兩處 <code>instance_double</code> string ref;case-10 明確列出兩個 slim 檔的 <code>:21,:22</code> 跟 <code>:209,:210</code> 兩對 from_state/to_state,5 個動態 sites 全包。<b>兩處進步抵不過 case-11 的 catastrophic drop</b>。</p>
       </div>
     </div>
@@ -408,7 +408,7 @@
       </table>
     </div>
     <p>case-11 是「給 controller#action,反查所有 routes / URL helper / link_to 呼叫點」題 —— 純 Rails routes DSL 題,本就是 rails-dsl backend 該大勝的<b>指定主場</b>。看數字:ctx 從 1209K 暴砍到 80K、rdx 從 19 變 0、reads 從 8 變 0 —— backend 一次給回完整答案,Haiku 連 1 個 rubydex 呼叫都沒打、連 1 個檔都沒讀。理論上這是 β.2 教科書級別的勝利。</p>
-    <p>但 Haiku 接著做了一件出乎意料的事:它仍想自己 Read 檔案驗證,然後撞到工具的 cwd 跟 project_root 不一致(cwd 在 <code>/Users/liu/ruby_indexer</code>、project_root 在 <code>/Users/liu/sunnyfounder/e_trading</code>),回了「不能從 cwd access project_root」的 message,<b>直接拒絕作答</b>。</p>
+    <p>但 Haiku 接著做了一件出乎意料的事:它仍想自己 Read 檔案驗證,然後撞到工具的 cwd 跟 project_root 不一致(cwd 在 <code>&lt;benchmark_cwd&gt;</code>、project_root 在 <code>&lt;project_root&gt;</code>),回了「不能從 cwd access project_root」的 message,<b>直接拒絕作答</b>。</p>
     <div class="callout"><span class="lab">這是 β.2 設計缺陷的具體展現</span><p>rails-dsl 給 1-shot high-confidence 答案後,弱模型會被「project root 明確、但我的工具 cwd 不對」這種看似 instruction 衝突搞亂(它沒意識到 backend 已給了答案、自己再驗證會撞 cwd)。<b>V4-α 的 1209K-ctx / 19 calls 答案 Haiku 自己一步步搜出來、沒有這個衝突</b> —— 過程更貴、但結果是 ok。</p></div>
 
     <h3 style="margin-top:30px">② Codex case-7 source_type silent bug:rails-dsl 把它「解讀」掉</h3>
@@ -421,9 +421,9 @@
         </tbody>
       </table>
     </div>
-    <p>case-7 是「找 production code 裡 polymorphic <code>source_type</code> 字串裡的 silent bug —— 字串會被 <code>classify.constantize</code>（字串轉成 Ruby 常數名稱並嘗試取得該 class）解到頂層常數，但對應的真實 model 在 namespace 裡，於是 production runtime 會 RuntimeError」題。<b>答案核心</b>是 <code>'income_expense'</code> —— 它 constantize 到頂層 <code>IncomeExpense</code>（不存在），但有個 namespaced model <code>ElectricityAccounting::ChargesCalculation::FixedCharge::Models::IncomeExpense</code> 確實存在，只是不在頂層 → silent bug。</p>
-    <p>Codex 在 V4-α 給了 part(列了 <code>Revenue::Due</code> 等真 bug、漏 income_expense)。換 β.2 後,rails-dsl 餵的 polymorphic 關聯上下文裡顯式列出了 <code>ElectricityAccounting::ChargesCalculation::FixedCharge::Models::IncomeExpense</code> 這個 namespaced model 的存在,於是 Codex「合理化」掉:既然有這個 model、那 <code>'income_expense'</code> 對應的就是它(named with high confidence),不是 bug。</p>
-    <div class="callout"><span class="lab">這是 rails-knowledge 反向</span><p>Codex 用 rails-dsl 給的 namespaced model 上下文把 silent bug <b>explain away</b> —— backend 給的不是錯資訊,而是「太多正確但 misleading 的相關上下文」,讓強模型在 high-confidence 下對「constantize 解的是<b>頂層</b>常數、不是任何 namespaced 同名類」這個 Rails 真實 runtime 行為失察。<b>對 Opus(中模型)同樣的上下文反而救起來</b>(Opus bad→ok),因為它走「A 類真 polymorphic vs B 類 sentinel」的分組推理路徑、明確指認 income_expense 是 silent bug。同 backend、同題、不同推理風格 → 反方向結論。</p></div>
+    <p>case-7 是「找 production code 裡 polymorphic <code>source_type</code> 字串裡的 silent bug —— 字串會被 <code>classify.constantize</code>（字串轉成 Ruby 常數名稱並嘗試取得該 class）解到頂層常數，但對應的真實 model 在 namespace 裡，於是 production runtime 會 RuntimeError」題。<b>答案核心</b>是 <code>'adjustment'</code> —— 它 constantize 到頂層 <code>IncomeExpense</code>（不存在），但有個 namespaced model <code>Billing::Charges::Models::Adjustment</code> 確實存在，只是不在頂層 → silent bug。</p>
+    <p>Codex 在 V4-α 給了 part(列了 <code>Ledger::Charge</code> 等真 bug、漏 adjustment)。換 β.2 後,rails-dsl 餵的 polymorphic 關聯上下文裡顯式列出了 <code>Billing::Charges::Models::Adjustment</code> 這個 namespaced model 的存在,於是 Codex「合理化」掉:既然有這個 model、那 <code>'adjustment'</code> 對應的就是它(named with high confidence),不是 bug。</p>
+    <div class="callout"><span class="lab">這是 rails-knowledge 反向</span><p>Codex 用 rails-dsl 給的 namespaced model 上下文把 silent bug <b>explain away</b> —— backend 給的不是錯資訊,而是「太多正確但 misleading 的相關上下文」,讓強模型在 high-confidence 下對「constantize 解的是<b>頂層</b>常數、不是任何 namespaced 同名類」這個 Rails 真實 runtime 行為失察。<b>對 Opus(中模型)同樣的上下文反而救起來</b>(Opus bad→ok),因為它走「A 類真 polymorphic vs B 類 sentinel」的分組推理路徑、明確指認 adjustment 是 silent bug。同 backend、同題、不同推理風格 → 反方向結論。</p></div>
   </div>
 </section>
 
@@ -436,7 +436,7 @@
     <p>③ <b>case-11 反諷揭露 β.2 真正的設計缺陷</b>:不是 backend 知識不對,是「給太多 high-confidence 1-shot 上下文,弱模型反而被看似 instruction 衝突的訊號(project_root 在 X 但我 cwd 在 Y)搞亂,直接 bail」。V4-α 的「LLM 自己一步步搜」反而沒這個 surface。<b>backend 越強、prompt-to-LLM 介面越要小心高 confidence 訊號跟 LLM 自我驗證之間的張力</b>。</p>
     <p>④ <b>V4-β.2 真實的價值是 model + 題型雙重 routing,不是 backend 本身</b>。光裝上 rails-dsl 並打開 <code>ORCH_ENABLE_RAILS_DSL=1</code> 不會 universal 升級;需要 classifier 按「模型強弱 + 題型 locate vs count vs reasoning」動態決定要不要 enable rails-dsl。跟 V4-α 結論「IA locate 是 model-dependent」是同一個 pattern 的延伸 —— 整個 V4 系列的 actionable 都是「外層 routing 需要 capability-aware」。</p>
 
-    <div class="callout warn"><span class="lab">V4-γ runtime backend go/no-go</span><p>本輪也順帶釐清 V4-γ(runtime introspection backend,load Rails app 做 reflection)的可行性。case-7 silent bug 是 V4-γ 該大勝的指定主場(只有真實 runtime 知道 constantize 解到哪)—— 但 β.2 結果<b>矛盾</b>:Opus 升(rails-dsl polymorphic 上下文有用)、Codex 降(同樣上下文 explain away)。若 γ 給更強的「runtime 確認 income_expense 在頂層不存在」訊號,理論上 Codex 該被強訊號逼回正確答案;但 β.2 case-7 經驗顯示<b>強模型遇到強 backend 訊號可能再 explain away(找個其他原因合理化)、不是直接服從</b>。實作成本(Rails app 啟動 + 隔離)+ 不確定能不能解決 explain-away → <b>V4-γ 仍 no-go</b>,跟 α 報告結論一致。下一步該是 model-aware classifier(β.3?)而不是再多裝 backend。</p></div>
+    <div class="callout warn"><span class="lab">V4-γ runtime backend go/no-go</span><p>本輪也順帶釐清 V4-γ(runtime introspection backend,load Rails app 做 reflection)的可行性。case-7 silent bug 是 V4-γ 該大勝的指定主場(只有真實 runtime 知道 constantize 解到哪)—— 但 β.2 結果<b>矛盾</b>:Opus 升(rails-dsl polymorphic 上下文有用)、Codex 降(同樣上下文 explain away)。若 γ 給更強的「runtime 確認 adjustment 在頂層不存在」訊號,理論上 Codex 該被強訊號逼回正確答案;但 β.2 case-7 經驗顯示<b>強模型遇到強 backend 訊號可能再 explain away(找個其他原因合理化)、不是直接服從</b>。實作成本(Rails app 啟動 + 隔離)+ 不確定能不能解決 explain-away → <b>V4-γ 仍 no-go</b>,跟 α 報告結論一致。下一步該是 model-aware classifier(β.3?)而不是再多裝 backend。</p></div>
 
     <div class="callout"><span class="lab">如何看這些數字</span><p>每格只跑<b>一次(n=1)</b>,單次變異很大。所有結論都是<b>方向性訊號</b>;單題的小差異(尤其 ±1 個 part/ok、或 case-10 Opus ok→part 這類 random drift)別當定論。要可發布的強主張需每格 N 次取中位。<b>本報告對 β.2 的判斷「強模型雙刃劍 + Haiku 雙降」的方向訊號夠強</b>(Codex value −2.5、Haiku case-11 catastrophic 都不是 ±1 邊界),但模型內個案的具體解讀(case-10 Opus 反向、Haiku case-8 救起)需要更多 N。</p></div>
   </div>
@@ -463,7 +463,7 @@
           </tr>
           <tr style="background:#f7f2e8">
             <td class="cid">v4c<br><small>PR#3</small></td>
-            <td><code>order_change_status_context.rb</code> + <code>notify.rb</code></td>
+            <td><code>status_change_context.rb</code> + <code>notifier.rb</code></td>
             <td>context / notifier</td>
             <td><span class="c-part" style="padding:1px 6px;border-radius:3px;font-size:12px">part</span> <span class="c-ok" style="padding:1px 6px;border-radius:3px;font-size:12px">ok</span> <span class="c-part" style="padding:1px 6px;border-radius:3px;font-size:12px">part</span></td>
             <td><span class="c-ok" style="padding:1px 6px;border-radius:3px;font-size:12px">ok</span> <span class="c-ok" style="padding:1px 6px;border-radius:3px;font-size:12px">ok</span> <span class="c-ok" style="padding:1px 6px;border-radius:3px;font-size:12px">ok</span></td>
@@ -479,7 +479,7 @@
           </tr>
           <tr style="background:#f7f2e8">
             <td class="cid">v4e<br><small>model 層</small></td>
-            <td><code>project_entry/models/entry.rb</code> 加 <code>CUSTOM_SOURCE_TYPE_STRINGS</code> + 注解</td>
+            <td><code>project_entry/models/record.rb</code> 加 <code>CUSTOM_SOURCE_TYPE_STRINGS</code> + 注解</td>
             <td><b>domain model 層</b></td>
             <td><span class="c-bad" style="padding:1px 6px;border-radius:3px;font-size:12px">err</span> <span class="c-ok" style="padding:1px 6px;border-radius:3px;font-size:12px">ok</span> <span class="c-part" style="padding:1px 6px;border-radius:3px;font-size:12px">part</span></td>
             <td colspan="1">（未測）</td>
@@ -491,10 +491,10 @@
 
     <h3 style="margin-top:28px">教訓 1：常數要放在模型搜尋路徑上，不是 view 層</h3>
     <p>三輪最關鍵的發現是<strong>搜尋層級</strong>的問題。LLM 在問 source_type 的 polymorphic 行為時，搜尋路徑是 domain 層（models / use_cases / entities），不是 view_model 或 context 層。v4c / v4d 的常數放在 view / context，LLM 的 find_code 呼叫根本不會路由到那裡——不是常數沒用，是模型永遠找不到它。</p>
-    <p>v4e 把 <code>CUSTOM_SOURCE_TYPE_STRINGS</code> 放在 <code>models/entry.rb</code> 緊鄰 <code>belongs_to :source, polymorphic: true</code>，加上「這些值 constantize 會 raise NameError」的注解。結果：<b>Opus 和 Codex 都找到了</b>，Opus 還用它推導出比 answer key 更深的 bug（<code>income_expense.rb:29</code> 的 <code>has_many :records, as: 'source'</code> 寫入 FQN 與短字串並存導致的衝突）。</p>
+    <p>v4e 把 <code>CUSTOM_SOURCE_TYPE_STRINGS</code> 放在 <code>models/record.rb</code> 緊鄰 <code>belongs_to :source, polymorphic: true</code>，加上「這些值 constantize 會 raise NameError」的注解。結果：<b>Opus 和 Codex 都找到了</b>，Opus 還用它推導出比 answer key 更深的 bug（<code>adjustment.rb:29</code> 的 <code>has_many :records, as: 'source'</code> 寫入 FQN 與短字串並存導致的衝突）。</p>
 
     <h3>教訓 2：case-7 的本質是設計歧義，不只是 code 不透明</h3>
-    <p>即使 Opus 拿到常數後給出了最好的分析，<code>income_expense</code> 仍然很難被強制歸類為「silent bug」——因為技術上它<i>有</i>對應物件（透過 <code>belongs_to :income_expense</code> FK），只有從不被呼叫的 polymorphic path（<code>entry.source</code>）才會炸。這是<b>潛伏 bug，不是活躍 bug</b>，模型做出「有對應」的判斷其實有一定道理。Haiku 的問題更根本：ctx=1522K、max_turns 爆掉，換 code 解決不了搜尋效率問題。</p>
+    <p>即使 Opus 拿到常數後給出了最好的分析，<code>adjustment</code> 仍然很難被強制歸類為「silent bug」——因為技術上它<i>有</i>對應物件（透過 <code>belongs_to :adjustment</code> FK），只有從不被呼叫的 polymorphic path（<code>entry.source</code>）才會炸。這是<b>潛伏 bug，不是活躍 bug</b>，模型做出「有對應」的判斷其實有一定道理。Haiku 的問題更根本：ctx=1522K、max_turns 爆掉，換 code 解決不了搜尋效率問題。</p>
 
     <div class="cols" style="margin-top:18px">
       <div class="col yes">
@@ -559,7 +559,7 @@
           <tr><td class="cid">case-3 class_eval</td><td><span class="c-ok" style="padding:1px 5px;border-radius:3px">ok</span></td><td><span class="c-ok" style="padding:1px 5px;border-radius:3px">ok</span></td><td>=</td><td>L3 退役後找到 <code>def info:17</code>（原始 code 是 part）</td></tr>
           <tr><td class="cid">case-4 namespace FQN</td><td><span class="c-ok" style="padding:1px 5px;border-radius:3px">ok</span></td><td><span class="c-part" style="padding:1px 5px;border-radius:3px">part</span></td><td>↓</td><td>Stage 1 找到部分但計數不完整</td></tr>
           <tr><td class="cid">case-4A namespace</td><td><span class="c-ok" style="padding:1px 5px;border-radius:3px">ok</span></td><td><span class="c-part" style="padding:1px 5px;border-radius:3px">part</span></td><td>↓</td><td>同上</td></tr>
-          <tr><td class="cid">case-7 source_type</td><td><span class="c-ok" style="padding:1px 5px;border-radius:3px">ok</span></td><td><span class="c-part" style="padding:1px 5px;border-radius:3px">part</span></td><td>↓</td><td>找到 CUSTOM_SOURCE_TYPE_STRINGS，但 income_expense FK 設計歧義仍難判</td></tr>
+          <tr><td class="cid">case-7 source_type</td><td><span class="c-ok" style="padding:1px 5px;border-radius:3px">ok</span></td><td><span class="c-part" style="padding:1px 5px;border-radius:3px">part</span></td><td>↓</td><td>找到 CUSTOM_SOURCE_TYPE_STRINGS，但 adjustment FK 設計歧義仍難判</td></tr>
           <tr><td class="cid">case-8 FQN 計數</td><td><span class="c-ok" style="padding:1px 5px;border-radius:3px">ok</span></td><td><span class="c-ok" style="padding:1px 5px;border-radius:3px">ok</span></td><td>=</td><td>靜態友善，Stage 1 找齊</td></tr>
           <tr><td class="cid">case-9 callback</td><td><span class="c-ok" style="padding:1px 5px;border-radius:3px">ok</span></td><td><span class="c-ok" style="padding:1px 5px;border-radius:3px">ok</span></td><td>=</td><td>callback symbol 靜態可見</td></tr>
           <tr><td class="cid">case-10 i18n key</td><td><span class="c-part" style="padding:1px 5px;border-radius:3px">part</span></td><td><span class="c-bad" style="padding:1px 5px;border-radius:3px">bad</span></td><td>↓</td><td>Stage 1 max_turns(45) 爆掉，Stage 2 拒絕作答（graceful fail）</td></tr>
@@ -597,7 +597,7 @@
     <div class="callout" style="margin-top:18px">
       <span class="lab">H2 驗証結論</span>
       <p><b>case-3 完全驗証</b>：<code>class_eval</code> → 顯式 <code>def</code> 讓 Stage 1 Haiku 直接找到精確行號，Stage 2 給出 ok 答案。L3 退役對「動態方法定義」類型有效。</p>
-      <p><b>case-7 部分驗証</b>：<code>CUSTOM_SOURCE_TYPE_STRINGS</code> 讓常數變得可 grep，Stage 2 能引用它，但 <code>income_expense</code> 的「有 FK 對應但 polymorphic path 壞」設計歧義讓判斷仍困難。Part 維持，推理品質提升但 grade 沒變。</p>
+      <p><b>case-7 部分驗証</b>：<code>CUSTOM_SOURCE_TYPE_STRINGS</code> 讓常數變得可 grep，Stage 2 能引用它，但 <code>adjustment</code> 的「有 FK 對應但 polymorphic path 壞」設計歧義讓判斷仍困難。Part 維持，推理品質提升但 grade 沒變。</p>
     </div>
 
     <div class="callout warn" style="margin-top:14px">
@@ -610,15 +610,15 @@
 
 <section id="policy">
   <div class="wrap">
-    <div class="sec-head"><span class="sec-num">11</span><h2>把 V1-V5 變成政策:哪些寫法該禁、哪些別碰</h2></div>
-    <p class="sub">這節是整個系列的 actionable 終點。<b>每一條都綁 benchmark case 號 + 實測分數</b>，不是憑直覺列的 anti-pattern。分數：0.0=全錯，1.0=全對；grep=純LLM搜尋，rdx=靜態AST索引，orch/orch+dsl=V4 orchestrator。</p>
+    <div class="sec-head"><span class="sec-num">11</span><h2>撰寫準則:哪些寫法 AI 看不穿、哪些其實沒事</h2></div>
+    <p class="sub">這節把整個系列收斂成一組<b>可帶走的撰寫準則</b> —— 任何 Ruby/Rails 團隊都能拿去檢視自己的 codebase。<b>每一條都綁 benchmark case 號 + 實測分數</b>，不是憑直覺列的 anti-pattern。分數：0.0=全錯，1.0=全對；grep=純LLM搜尋，rdx=靜態AST索引，orch/orch+dsl=外層 orchestrator。</p>
 
     <div class="callout warn" style="margin-top:8px">
       <span class="lab">先推翻一個直覺</span>
       <p>我們原本以為「名字是變數的動態寫法都該退役」。<b>數據打臉</b>：<code>public_send("do_#{state}!")</code>（case-2）拿 0.89-1.00、<code>method_missing</code> 轉發（case-12）拿 1.00 —— 名字都是動態的，但一點都不難。真正全崩的是 case-7（0.00-0.50）。<b>分界不是「動不動態」，是「字串建構名稱 + 無固定前綴 + 跨檔才能反推」三重疊加。</b></p>
     </div>
 
-    <h3 style="margin-top:24px">🔴 Tier 1 — 禁止（數據證明全方法失敗）</h3>
+    <h3 style="margin-top:24px">🔴 Tier 1 — 盡量避免（數據證明全方法失敗）</h3>
     <div class="tbl-wrap">
       <table>
         <thead><tr><th>pattern</th><th>case</th><th>grep</th><th>rdx</th><th>orch</th><th>+dsl</th><th>改寫</th></tr></thead>
@@ -682,14 +682,14 @@
     </div>
     <p class="note" style="margin-top:8px">這些「看起來很動態」的寫法，benchmark 證明 grep/LLM 都能處理。<b>退役它們是浪費工。</b></p>
 
-    <h3 style="margin-top:28px">執行機制</h3>
+    <h3 style="margin-top:28px">怎麼落地（通用做法）</h3>
     <div class="cols">
       <div class="col yes">
         <h4>✓ 要做</h4>
         <ul>
-          <li><b>CI lint</b>：Tier 1 pattern 做成 RuboCop cop / <code>l3_audit.rb</code> CI gate</li>
-          <li><b>新 code 不准新增 Tier 1</b>（歷史 53 hits 漸進處理）</li>
-          <li><b>PR checklist</b>：有 Tier 1？附 registry / 顯式 def 替代</li>
+          <li><b>CI lint</b>：把 Tier 1 pattern 寫成 RuboCop custom cop 或 AST walker（prism / RuboCop-AST），當 CI gate</li>
+          <li><b>新 code 守門</b>：不准新增 Tier 1；歷史既有的漸進處理，不強推</li>
+          <li><b>PR checklist</b>：有 Tier 1？附 registry / 顯式 def 替代方案</li>
         </ul>
       </div>
       <div class="col no">
@@ -703,8 +703,8 @@
     </div>
 
     <div class="callout acc" style="margin-top:18px">
-      <span class="lab">一句話政策</span>
-      <p><b>禁止「字串建構名稱 + 無固定前綴 + 跨檔才能反推」的三重組合（Tier 1，= case-7 那一族）。</b>它是整個 benchmark 唯一全方法 &lt;0.5 的。其餘動態寫法，數據說沒事就別動。這是 V1-V5 跑了 15 題 × 3 模型 × 5 策略換來的唯一硬結論。</p>
+      <span class="lab">一句話準則</span>
+      <p><b>避免「字串建構名稱 + 無固定前綴 + 跨檔才能反推」的三重組合（Tier 1，= case-7 那一族）。</b>它是整個 benchmark 唯一全方法 &lt;0.5 的。其餘動態寫法，數據說沒事就別動。這是 V1-V5 跑了 15 題 × 3 模型 × 5 策略換來的唯一硬結論 —— 拿去檢視自己的 codebase，先處理 Tier 1，別浪費時間在 Tier 3。</p>
     </div>
   </div>
 </section>
