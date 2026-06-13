@@ -68,6 +68,17 @@
   .decision{font-size:14px; background:#f7f2e8; border:1px solid var(--line-strong); border-radius:8px; padding:10px 14px; margin:8px 0 4px}
   .decision b{font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin-right:8px}
 
+  .corpus{display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin:14px 0}
+  .ccard{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:20px}
+  .ccard .capp{font-family:var(--mono); font-weight:700; color:var(--accent); font-size:15px}
+  .ccard .capp span{display:block; font-family:var(--body); font-weight:400; font-size:11.5px; color:var(--muted); margin-top:3px}
+  .ccard .cbig{font-family:var(--disp); font-weight:700; font-size:38px; line-height:1; letter-spacing:-.02em; margin:16px 0 0}
+  .ccard .cbig span{display:block; font-family:var(--body); font-weight:400; font-size:12px; color:var(--muted); margin-top:5px}
+  .ccard .cstats{display:grid; grid-template-columns:1fr 1fr; gap:8px 14px; margin:18px 0 0; padding:16px 0 0; border-top:1px solid var(--line); font-size:12.5px; color:var(--muted)}
+  .ccard .cstats b{font-family:var(--mono); color:var(--ink); font-weight:600}
+  .ccard .ccases{margin-top:15px; font-family:var(--mono); font-size:11.5px; color:var(--accent); background:var(--accent-soft); padding:5px 10px; border-radius:8px; display:inline-block}
+  @media(max-width:760px){ .corpus{grid-template-columns:1fr} }
+
   footer{padding:36px 0 64px; color:var(--muted); font-size:13px}
   footer .links{display:flex; flex-wrap:wrap; gap:9px; margin:12px 0 16px}
   footer .links a{font-family:var(--mono); font-size:12px; text-decoration:none; color:var(--accent); border:1px solid var(--line-strong); border-radius:8px; padding:5px 11px}
@@ -120,7 +131,37 @@
     <h2>怎麼測</h2>
 
     <h3>查詢的 codebase 規模</h3>
-    <p>case 取自 <b>3 個生產 Rails 專案</b>（已匿名），合計 <b>5,501 個 <code>.rb</code> 檔</b>（單一專案 1,313 / 2,757 / 1,431）。這點很重要：在近 3,000 檔的單一 repo 裡「找全某 method 的所有 caller」，跟在玩具專案裡找完全是兩回事——下面所有 recall 數字都要放在這個尺度下讀。codebase 越大，純 grep 的雜訊與漏報越嚴重，靜態索引的價值也越被放大。</p>
+    <p class="sub">三個都是真實生產 Rails app（不是玩具範例），用 <code>scc</code> 量測（已套用 .gitignore）。每個 case 在對應 app 的<b>整個 codebase</b> 裡找——這就是搜尋空間大小，也是各題 recall 的對比依據。</p>
+    <div class="corpus">
+      <div class="ccard">
+        <div class="capp">App-A<span>生產 Rails app</span></div>
+        <div class="cbig">144.7k<span>Ruby 程式碼行</span></div>
+        <div class="cstats">
+          <div><b>2,763</b> Ruby 檔</div><div><b>13.1k</b> YAML 行</div>
+          <div><b>4.1k</b> ERB 行</div><div><b>401k</b> 總程式碼行</div>
+        </div>
+        <div class="ccases">10 cases · 1,2,3,7,8,9,10,12,13,14</div>
+      </div>
+      <div class="ccard">
+        <div class="capp">App-B<span>生產 Rails app</span></div>
+        <div class="cbig">62.3k<span>Ruby 程式碼行</span></div>
+        <div class="cstats">
+          <div><b>1,438</b> Ruby 檔</div><div><b>6.2k</b> YAML 行</div>
+          <div><b>1.3k</b> ERB 行</div><div><b>293k</b> 總程式碼行</div>
+        </div>
+        <div class="ccases">3 cases · 5,6,11</div>
+      </div>
+      <div class="ccard">
+        <div class="capp">App-C<span>生產 Rails app</span></div>
+        <div class="cbig">108.2k<span>Ruby 程式碼行</span></div>
+        <div class="cstats">
+          <div><b>1,315</b> Ruby 檔</div><div><b>3.5k</b> YAML 行</div>
+          <div><b>0.8k</b> ERB 行</div><div><b>373k</b> 總程式碼行</div>
+        </div>
+        <div class="ccases">2 cases · 4,4A</div>
+      </div>
+    </div>
+    <p class="sub">三個 app 的 Ruby 量在 6 萬–14.5 萬行，grep 的搜尋空間（總程式碼行）達 29 萬–40 萬行。<b>靜態索引只認 <code>.rb</code>，YAML / ERB 是它的盲點</b>——case-5（worker 排程在 YAML）、case-10（i18n key 在 YAML）正是踩這個。量測工具：<code>scc 3.7.0</code>。</p>
 
     <h3>15 個 case，每個對應一種具名的 Ruby/Rails 寫法</h3>
     <p class="sub">每題都有人工驗證過的標準答案。「典型陷阱」欄是這個寫法為何讓 grep / 靜態分析失準。</p>
