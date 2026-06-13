@@ -200,6 +200,7 @@
   <a href="#verdict"><span class="dot"></span><span class="lbl">08 結論 + γ go/no-go</span></a>
   <a href="#pr3"><span class="dot"></span><span class="lbl">09 code line 追蹤</span></a>
   <a href="#v5"><span class="dot"></span><span class="lbl">10 V5 兩階段</span></a>
+  <a href="#policy"><span class="dot"></span><span class="lbl">11 政策</span></a>
 </nav>
 
 <header class="hero">
@@ -603,6 +604,107 @@
       <span class="lab">H1 未成立</span>
       <p>兩階段流水線品質整體低於 Opus 全跑（8.5 → 6.5/9），machine recall 也下降（0.887 → 0.743）。根本原因：<b>Haiku Stage 1 的搜尋策略比 Opus 差</b>——它用更多 turns 找到更少的相關檔案（case-2 從 100% 掉到 58%）。Orchestrator 能補部分弱點，但無法完全彌補模型本身的判斷差距。</p>
       <p>Stage 1 max_turns 爆掉的 case（case-10）導致 Stage 2 給出「graceful fail」（明確說缺口），比 V4b 的 part 更差——這是兩階段流水線在「Stage 1 找不到」時的特有失敗模式：<b>確定的壞，而非模糊的部分對</b>。</p>
+    </div>
+  </div>
+</section>
+
+<section id="policy">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">11</span><h2>把 V1-V5 變成政策:哪些寫法該禁、哪些別碰</h2></div>
+    <p class="sub">這節是整個系列的 actionable 終點。<b>每一條都綁 benchmark case 號 + 實測分數</b>，不是憑直覺列的 anti-pattern。分數：0.0=全錯，1.0=全對；grep=純LLM搜尋，rdx=靜態AST索引，orch/orch+dsl=V4 orchestrator。</p>
+
+    <div class="callout warn" style="margin-top:8px">
+      <span class="lab">先推翻一個直覺</span>
+      <p>我們原本以為「名字是變數的動態寫法都該退役」。<b>數據打臉</b>：<code>public_send("do_#{state}!")</code>（case-2）拿 0.89-1.00、<code>method_missing</code> 轉發（case-12）拿 1.00 —— 名字都是動態的，但一點都不難。真正全崩的是 case-7（0.00-0.50）。<b>分界不是「動不動態」，是「字串建構名稱 + 無固定前綴 + 跨檔才能反推」三重疊加。</b></p>
+    </div>
+
+    <h3 style="margin-top:24px">🔴 Tier 1 — 禁止（數據證明全方法失敗）</h3>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>pattern</th><th>case</th><th>grep</th><th>rdx</th><th>orch</th><th>+dsl</th><th>改寫</th></tr></thead>
+        <tbody>
+          <tr>
+            <td class="tech">polymorphic + 自訂短字串 source_type</td>
+            <td class="cid">7</td>
+            <td class="num"><span class="c-bad" style="padding:1px 5px;border-radius:3px">0.00</span></td>
+            <td class="num"><span class="c-bad" style="padding:1px 5px;border-radius:3px">0.17</span></td>
+            <td class="num"><span class="c-bad" style="padding:1px 5px;border-radius:3px">0.33</span></td>
+            <td class="num"><span class="c-part" style="padding:1px 5px;border-radius:3px">0.50</span></td>
+            <td class="tech">存完整 FQN，或放棄 polymorphic 改顯式 registry+FK</td>
+          </tr>
+          <tr>
+            <td class="tech"><code>"Foo::#{x}".constantize</code> 拼字串取 class</td>
+            <td class="cid">7</td>
+            <td class="num" colspan="4" style="text-align:center">同 case-7 機制（class 對應 runtime 才成立）</td>
+            <td class="tech">顯式 <code>REGISTRY = {...}.freeze</code> + fetch</td>
+          </tr>
+          <tr>
+            <td class="tech"><code>class_eval</code> / <code>define_method(變數)</code> 動態定義方法</td>
+            <td class="cid">3</td>
+            <td class="num"><span class="c-miss2" style="padding:1px 5px;border-radius:3px">0.67</span></td>
+            <td class="num"><span class="c-miss2" style="padding:1px 5px;border-radius:3px">0.67</span></td>
+            <td class="num"><span class="c-part" style="padding:1px 5px;border-radius:3px">0.83</span></td>
+            <td class="num"><span class="c-part" style="padding:1px 5px;border-radius:3px">0.83</span></td>
+            <td class="tech">逐個顯式 <code>def</code></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note" style="margin-top:8px"><b>case-7</b> 是整個 benchmark 唯一全方法 &lt;0.5 的 pattern：字串無固定前綴 + 對應 class 不存在(constantize 會炸) + 要跨檔讀 dispatch 反推，三個都中。<b>case-3</b> 的 grep=rdx=0.67 證明<b>靜態工具對 class_eval 零幫助</b>；V5 實測退役成顯式 def 後 part → ok（精確命中 <code>base_logger.rb:17</code>）。</p>
+
+    <h3 style="margin-top:28px">🟡 Tier 2 — 不要改 code，改用工具（靜態工具反而強）</h3>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>pattern</th><th>case</th><th>grep</th><th>rdx</th><th>結論</th></tr></thead>
+        <tbody>
+          <tr>
+            <td class="tech">多 namespace 同名 class</td>
+            <td class="cid">4 / 4A</td>
+            <td class="num"><span class="c-miss2" style="padding:1px 5px;border-radius:3px">0.67</span></td>
+            <td class="num"><span class="c-good" style="padding:1px 5px;border-radius:3px">1.00</span></td>
+            <td class="tech">rubydex 大勝 grep → 是工具問題，不是 code 問題。namespace 是好的 DDD，別為了好 grep 而避免</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 style="margin-top:28px">🟢 Tier 3 — 不要浪費時間退役（數據證明沒問題）</h3>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>pattern</th><th>case</th><th>分數</th><th>為什麼沒問題</th></tr></thead>
+        <tbody>
+          <tr><td class="tech"><code>method_missing</code> 轉發</td><td class="cid">12</td><td class="num"><span class="c-good" style="padding:1px 5px;border-radius:3px">1.00</span></td><td class="tech">局部、轉發目標在同 class</td></tr>
+          <tr><td class="tech"><code>public_send("do_#{var}!")</code> / AASM</td><td class="cid">2</td><td class="num"><span class="c-good" style="padding:1px 5px;border-radius:3px">0.89-1.0</span></td><td class="tech">固定前綴 <code>do_</code> 可 grep</td></tr>
+          <tr><td class="tech"><code>class Object; def ...</code> monkey-patch</td><td class="cid">6</td><td class="num"><span class="c-good" style="padding:1px 5px;border-radius:3px">1.00</span></td><td class="tech">定義點 grep 得到</td></tr>
+          <tr><td class="tech">Sidekiq YAML 字串指 class</td><td class="cid">5</td><td class="num"><span class="c-good" style="padding:1px 5px;border-radius:3px">1.00</span></td><td class="tech">字串 literal 直接 grep</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note" style="margin-top:8px">這些「看起來很動態」的寫法，benchmark 證明 grep/LLM 都能處理。<b>退役它們是浪費工。</b></p>
+
+    <h3 style="margin-top:28px">執行機制</h3>
+    <div class="cols">
+      <div class="col yes">
+        <h4>✓ 要做</h4>
+        <ul>
+          <li><b>CI lint</b>：Tier 1 pattern 做成 RuboCop cop / <code>l3_audit.rb</code> CI gate</li>
+          <li><b>新 code 不准新增 Tier 1</b>（歷史 53 hits 漸進處理）</li>
+          <li><b>PR checklist</b>：有 Tier 1？附 registry / 顯式 def 替代</li>
+        </ul>
+      </div>
+      <div class="col no">
+        <h4>✗ 不要做</h4>
+        <ul>
+          <li>不為了 AI 退役 Tier 3（無證據，純浪費）</li>
+          <li>不為了「好 grep」放棄 namespace（Tier 2，工具該解）</li>
+          <li>不強制重寫所有歷史 code</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="callout acc" style="margin-top:18px">
+      <span class="lab">一句話政策</span>
+      <p><b>禁止「字串建構名稱 + 無固定前綴 + 跨檔才能反推」的三重組合（Tier 1，= case-7 那一族）。</b>它是整個 benchmark 唯一全方法 &lt;0.5 的。其餘動態寫法，數據說沒事就別動。這是 V1-V5 跑了 15 題 × 3 模型 × 5 策略換來的唯一硬結論。</p>
     </div>
   </div>
 </section>
