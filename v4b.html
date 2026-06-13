@@ -209,6 +209,7 @@
     <h1>裝了 <em>rails-dsl backend</em> 之後:<br>強模型 machine 全綠、value 卻大降</h1>
     <p class="lede">V4-α 證明外層 orchestrator（分派器，由程式決定呼叫哪個搜尋工具、不靠 LLM 自己判斷）把 routing 拉到 LLM 外面可行,但僅有 rubydex（靜態 Ruby AST 索引工具）+ rg（ripgrep，字串搜尋）兩個 backend、沒兌現「多工具協同」的承諾。<b>V4-β.2</b> 補上 <code>rails-dsl</code>:靜態 prism AST（Ruby 程式碼語法樹分析）抽 Rails routes + ActiveRecord 關聯 + polymorphic 線索,搭配 tokenizing query scorer（分詞相關性排序）與 hint vocabulary（意圖關鍵字對應）。三模型 × 15 題重跑(<code>ORCH_ENABLE_RAILS_DSL=1</code>),這次拿 V2-grep / V2-rdx / V3-sel / V4-orch(α)/ V4-orch(β.2)五臂（五種策略條件）並排。問題:加了 Rails 知識的 backend,真的全面變好嗎?</p>
     <div class="vswitch">
+      <a href="./story.html">完整故事</a>
       <a href="./index.html">V1</a>
       <a href="./v2.html">V2</a>
       <a href="./v3.html">V3</a>

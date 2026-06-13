@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>用工具讓 LLM 更會查 Ruby code —— V1→V5 完整故事</title>
+<meta name="description" content="一個問題：能不能用工具讓 LLM 更會查 Ruby code，又準、又快、又省？跑了 V1-V5 五輪 benchmark（15 題真實 Rails 難題 × 3 模型）後的結論：堆工具有極限，真正的根本解是改寫少數讓靜態分析看不穿的 code 寫法。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#f4efe6; --card:#fbf9f4; --ink:#211f1c; --muted:#6b6358;
+    --line:#e2d9c8; --line-strong:#ccc0a8;
+    --accent:#0f766e; --accent-soft:#cfeae6;
+    --good:#15803d; --good-bg:#dcfce7; --good-line:#a7e3bc;
+    --miss:#b91c1c; --miss-bg:#fde2e2; --miss-line:#f3b4b4;
+    --over:#b45309; --over-bg:#fdeccf; --over-line:#eecb8e;
+    --mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+    --disp:'Space Grotesk',system-ui,sans-serif;
+    --body:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC",sans-serif;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0; font-family:var(--body); color:var(--ink); line-height:1.7;
+    background:
+      radial-gradient(1200px 600px at 80% -10%, #fbf6ec 0%, rgba(251,246,236,0) 60%),
+      radial-gradient(900px 500px at -10% 10%, #f1ece0 0%, rgba(241,236,224,0) 55%),
+      var(--paper);
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:820px; margin:0 auto; padding:0 24px}
+  a{color:var(--accent); text-underline-offset:3px}
+
+  header.hero{padding:80px 0 44px; border-bottom:1px solid var(--line)}
+  .kicker{font-family:var(--mono); font-size:12.5px; letter-spacing:.16em; text-transform:uppercase;
+    color:var(--accent); display:inline-flex; align-items:center; gap:9px}
+  .kicker::before{content:""; width:26px; height:1px; background:var(--accent)}
+  h1{font-family:var(--disp); font-weight:700; font-size:clamp(32px,5vw,52px);
+    line-height:1.08; letter-spacing:-.02em; margin:18px 0 0}
+  h1 em{font-style:normal; color:var(--accent)}
+  .lede{font-size:clamp(17px,2.2vw,21px); color:var(--muted); margin:22px 0 0}
+  .vswitch{display:inline-flex; gap:2px; margin-top:26px; background:var(--card); border:1px solid var(--line); border-radius:11px; padding:3px; flex-wrap:wrap}
+  .vswitch a{font-family:var(--mono); font-size:12.5px; text-decoration:none; color:var(--muted); padding:6px 14px; border-radius:8px}
+  .vswitch a.cur{background:var(--accent); color:#fff; font-weight:600}
+
+  section{padding:48px 0; border-bottom:1px solid var(--line)}
+  .lab{font-family:var(--mono); font-size:11.5px; letter-spacing:.16em; text-transform:uppercase; color:var(--accent); font-weight:600; margin:0 0 10px}
+  h2{font-family:var(--disp); font-weight:600; font-size:clamp(22px,3.2vw,30px); letter-spacing:-.01em; margin:0 0 16px}
+  h3{font-family:var(--disp); font-weight:600; font-size:18px; margin:28px 0 10px}
+  p{margin:0 0 14px}
+  .big{font-size:18px}
+  .big b{color:var(--accent)}
+
+  /* timeline */
+  .tl{margin:8px 0 0; padding:0; list-style:none}
+  .tl li{position:relative; padding:0 0 22px 30px; border-left:2px solid var(--line-strong)}
+  .tl li:last-child{border-left-color:transparent}
+  .tl li::before{content:""; position:absolute; left:-7px; top:2px; width:12px; height:12px; border-radius:50%; background:var(--accent); border:2px solid var(--paper)}
+  .tl .v{font-family:var(--mono); font-weight:700; font-size:13px; color:var(--accent)}
+  .tl .h{font-family:var(--disp); font-weight:600; font-size:16px; margin:2px 0 4px}
+  .tl .d{font-size:14.5px; color:var(--muted)}
+  .tl .d b{color:var(--ink)}
+
+  .tbl-wrap{overflow-x:auto; border:1px solid var(--line); border-radius:14px; background:var(--card); margin:14px 0}
+  table{border-collapse:collapse; width:100%; font-size:14.5px}
+  th,td{padding:11px 14px; text-align:left; border-bottom:1px solid var(--line); vertical-align:top}
+  thead th{font-family:var(--mono); font-size:11.5px; letter-spacing:.04em; text-transform:uppercase;
+    color:var(--muted); font-weight:500; background:#f7f2e8}
+  tbody tr:last-child td{border-bottom:none}
+  .pill{font-family:var(--mono); font-size:11px; padding:2px 8px; border-radius:20px; font-weight:600; white-space:nowrap}
+  .p-good{background:var(--good-bg); color:var(--good)}
+  .p-mid{background:var(--over-bg); color:var(--over)}
+  .p-bad{background:var(--miss-bg); color:var(--miss)}
+
+  .tldr{background:linear-gradient(180deg,#15433f,#0f2f2c); color:#eafaf6; border-radius:18px;
+    padding:28px 30px; font-size:clamp(16px,2.1vw,19px); line-height:1.6; margin:8px 0}
+  .tldr .lab{color:#79d8c9}
+  .tldr strong{color:#fff}
+  .tldr p{margin:10px 0 0}
+
+  .callout{border-left:3px solid var(--accent); background:var(--accent-soft); border-radius:0 12px 12px 0;
+    padding:16px 20px; margin:18px 0}
+  .callout .lab{margin-bottom:5px}
+  .callout p{margin:5px 0 0; font-size:15px}
+  .callout.warn{border-left-color:var(--over); background:var(--over-bg)}
+  .callout.warn .lab{color:var(--over)}
+
+  code{font-family:var(--mono); font-size:.92em; background:#00000008; padding:1px 5px; border-radius:5px}
+  .num{font-family:var(--mono); font-weight:600}
+  .keep{counter-reset:none}
+  ol.big-list{margin:0; padding-left:0; list-style:none; counter-reset:c}
+  ol.big-list li{position:relative; padding:14px 0 14px 48px; border-bottom:1px solid var(--line)}
+  ol.big-list li:last-child{border-bottom:none}
+  ol.big-list li::before{counter-increment:c; content:counter(c); position:absolute; left:0; top:12px;
+    width:30px; height:30px; border-radius:50%; background:var(--accent); color:#fff;
+    font-family:var(--disp); font-weight:700; display:flex; align-items:center; justify-content:center; font-size:15px}
+  ol.big-list b{color:var(--accent)}
+
+  footer{padding:42px 0 70px; color:var(--muted); font-size:13.5px}
+  footer .links{display:flex; flex-wrap:wrap; gap:10px; margin:0 0 18px}
+  footer .links a{font-family:var(--mono); font-size:12.5px; text-decoration:none; color:var(--accent);
+    border:1px solid var(--line-strong); border-radius:8px; padding:6px 12px}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <span class="kicker">Ruby Code Search × LLM · V1→V5 完整故事</span>
+    <h1>能不能用工具讓 LLM<br><em>更會查 Ruby code</em>？</h1>
+    <p class="lede">又準、又快、又省。我跑了五輪 benchmark 想回答這個問題。<br>最後的答案有點出乎意料：<b>堆工具有極限，真正的根本解是改幾行 code。</b></p>
+    <div class="vswitch">
+      <a class="cur" href="./story.html">完整故事</a>
+      <a href="./index.html">V1</a>
+      <a href="./v2.html">V2</a>
+      <a href="./v3.html">V3</a>
+      <a href="./v4.html">V4-α</a>
+      <a href="./v4b.html">V4-β.2</a>
+    </div>
+  </div>
+</header>
+
+<!-- 主旨 + 意圖 -->
+<section>
+  <div class="wrap">
+    <p class="lab">主旨</p>
+    <h2>一個問題，貫穿五輪</h2>
+    <p class="big">LLM 幫你改 code 前，得先<b>看懂 code</b> —— 找出某個 method 被誰呼叫、某個關聯指向哪、改個名字會動到哪些檔。Ruby 又特別愛用「動態」寫法，很多東西不寫在明面上。</p>
+    <p class="big">所以問題很單純：<b>給 LLM 一些程式碼搜尋工具，它會不會查得更準、更省 token、更便宜？</b></p>
+
+    <p class="lab" style="margin-top:34px">宣告意圖</p>
+    <h2>怎麼測</h2>
+    <p>做了一個 benchmark：<b>15 題真實 Rails codebase 的難題</b>（找關聯、數引用、追動態方法、揪 silent bug），每題都有人工驗證過的標準答案。每題用 <b>3 個模型</b>（一弱一中一強）跑，比較「給工具 vs 不給工具」「哪種題配哪種工具」。</p>
+    <p>衡量三件事：<b>準</b>（有沒有找到正確答案）、<b>省</b>（消耗多少 token）、<b>穩</b>（換模型結論會不會翻盤）。</p>
+    <div class="callout">
+      <p class="lab">怎麼讀分數</p>
+      <p>後面出現的分數是 <b>0.0（全錯）到 1.0（全對）</b>。工具分兩種：<b>grep</b>（純文字搜尋，LLM 內建）、<b>靜態索引</b>（先把 Ruby 結構建成索引再查，像 rubydex / RubyLSP 那類）。</p>
+    </div>
+  </div>
+</section>
+
+<!-- 證明過程 -->
+<section>
+  <div class="wrap">
+    <p class="lab">證明過程</p>
+    <h2>五輪，每輪學到一件事</h2>
+    <p class="sub" style="color:var(--muted)">過程中試了很多搜尋策略跟驗證方法，這裡只留每輪真正的結論。</p>
+    <ul class="tl">
+      <li>
+        <div class="v">V1 – V2</div>
+        <div class="h">靜態索引不是萬靈丹</div>
+        <div class="d">對「<b>結構題</b>」（找關聯、找 caller）靜態索引贏 grep；但對「<b>字串題</b>」（YAML 設定、字面字串）它反而是負擔——純 grep 一樣準還更快。<b>工具有適用範圍。</b></div>
+      </li>
+      <li>
+        <div class="v">V3</div>
+        <div class="h">叫模型自己選工具 → 不可靠</div>
+        <div class="d">在 prompt 裡寫「結構題才用索引」，賭模型自律。結果：弱模型幾乎不用、強模型在不該用的題猛用。<b>選工具的判斷不能交給模型。</b></div>
+      </li>
+      <li>
+        <div class="v">V4</div>
+        <div class="h">把選工具搬到程式層 → 找檔變準變省，但模型開始想錯</div>
+        <div class="d">改由外層程式（orchestrator）按題型自動派工具。<b>找檔大幅變準、token 砍三成。</b>但出現反效果：工具一次餵太多「高信心」上下文，<b>強模型會把真 bug 合理化掉、弱模型會被搞亂到拒答</b>。工具給的是資料，不是判斷力。</div>
+      </li>
+      <li>
+        <div class="v">V5</div>
+        <div class="h">兩個方向：拆分工沒用，改 code 直接見效</div>
+        <div class="d"><b>試 A</b>「便宜模型找檔 + 強模型推理」：推理那段 token 砍到極低，但總品質掉了——因為便宜模型找檔本來就比強模型差，給的料不全。<br><b>試 B</b>「改寫 code」：把一個動態生成方法的寫法改成普通寫法後，模型立刻精準命中。<b>這是整個系列第一次看到「改 code」直接見效。</b></div>
+      </li>
+    </ul>
+  </div>
+</section>
+
+<!-- 核心發現：題型 × 工具 -->
+<section>
+  <div class="wrap">
+    <p class="lab">核心發現</p>
+    <h2>哪種題，該用哪種工具</h2>
+    <p>把 15 題歸類後，規律很清楚——<b>工具有沒有用，看題型</b>：</p>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>題型</th><th>例子</th><th>工具效果</th><th>怎麼做</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>結構關係</td>
+            <td>找關聯、找 caller、改名影響面</td>
+            <td><span class="pill p-good">索引大勝</span></td>
+            <td>用靜態索引，grep 會漏</td>
+          </tr>
+          <tr>
+            <td>命名 / 計數</td>
+            <td>同名 class 散在多個 namespace</td>
+            <td><span class="pill p-good">索引大勝</span></td>
+            <td>用索引（grep 0.67 → 索引 1.00）</td>
+          </tr>
+          <tr>
+            <td>字串 / 設定</td>
+            <td>YAML 指 class、monkey-patch</td>
+            <td><span class="pill p-mid">grep 就夠</span></td>
+            <td>grep 滿分，加索引是浪費</td>
+          </tr>
+          <tr>
+            <td>動態方法</td>
+            <td>用迴圈/eval 生出來的方法</td>
+            <td><span class="pill p-bad">工具都沒用</span></td>
+            <td><b>改 code</b> 或硬靠模型推理</td>
+          </tr>
+          <tr>
+            <td>設計歧義</td>
+            <td>polymorphic 存自訂短字串、跑起來才知道對不對</td>
+            <td><span class="pill p-bad">全軍覆沒</span></td>
+            <td><b>只能改 code</b>（見下）</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p>上面兩列綠的，是工具的主場；中間 grep 就夠；<b>下面兩列紅的，再強的工具、再強的模型都解不漂亮</b>——因為答案根本不寫在靜態結構裡。這就帶到最後的結論。</p>
+  </div>
+</section>
+
+<!-- 結果總結 -->
+<section>
+  <div class="wrap">
+    <p class="lab">結果總結</p>
+    <h2>三個結論</h2>
+    <div class="tldr">
+      <p class="lab">一句話</p>
+      <p><strong>工具能幫 LLM「找對地方」，但幫不了「想清楚」。最划算的投資不是堆更多工具，是改掉少數讓靜態分析看不穿的 code 寫法——工具會隨模型改版過時，好 code 不會。</strong></p>
+    </div>
+    <ol class="big-list" style="margin-top:18px">
+      <li><b>根本解是改 code，不是堆工具。</b>動態生成方法、字串拼 class 名這類寫法，把它改成普通寫法後，連最弱的模型都能一眼看穿。而且這個改善對 grep、LSP、所有工具、所有模型都有效——不像工具，下個模型發布就可能要重調。</li>
+      <li><b>工具要按題型用，不要一招打天下。</b>結構題用靜態索引、字串題用 grep。混用只會白付成本，甚至（V4 證明）餵太多上下文還會害模型想錯。</li>
+      <li><b>有一種寫法是真正的地雷。</b>「用字串在執行期才拼出名稱、又沒有固定前綴可搜、還要跨好幾個檔才能反推對應」——這種三重組合是整個 benchmark 唯一全軍覆沒的，所有工具分數都低於 0.5。這類該優先退役。</li>
+    </ol>
+
+    <h3 style="margin-top:30px">給想套用的人：三層準則</h3>
+    <p>如果你也想檢視自己的 Ruby codebase，照這個優先序：</p>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>層級</th><th>寫法</th><th>怎麼辦</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><span class="pill p-bad">盡量避免</span></td>
+            <td>字串拼 class 名（<code>"#{x}".constantize</code>）、polymorphic 存自訂短字串、用 <code>class_eval</code>/變數名 <code>define_method</code> 動態生方法</td>
+            <td>改成顯式寫法：registry hash、寫死的 <code>def</code>、存完整 class 名</td>
+          </tr>
+          <tr>
+            <td><span class="pill p-mid">換工具</span></td>
+            <td>多 namespace 同名 class</td>
+            <td>別為了好搜而放棄 namespace（那是好設計）。改用靜態索引工具，它認得</td>
+          </tr>
+          <tr>
+            <td><span class="pill p-good">別動它</span></td>
+            <td><code>method_missing</code> 轉發、<code>public_send("固定前綴_#{var}")</code>、monkey-patch、YAML 字串</td>
+            <td>數據證明 grep/LLM 都能處理。退役它們是浪費工</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout warn">
+      <p class="lab">最反直覺的一點</p>
+      <p>我們本來以為「名字是變數的動態寫法都該退役」。<b>數據打臉</b>：<code>public_send("do_#{state}!")</code>、<code>method_missing</code> 這些看起來很動態的，反而都拿接近滿分——因為有固定前綴可搜、或範圍很局部。<b>真正的地雷不是「動不動態」，是「能不能被靜態追蹤」。</b></p>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <p class="lab" style="color:var(--muted)">想看細節？</p>
+    <div class="links">
+      <a href="./index.html">V1 報告</a>
+      <a href="./v2.html">V2 報告</a>
+      <a href="./v3.html">V3 報告</a>
+      <a href="./v4.html">V4-α 報告</a>
+      <a href="./v4b.html">V4-β.2 + V5 完整數據</a>
+    </div>
+    <p>本頁是 V1→V5 的整合敘事，砍掉了過程中的方法學細節。每個結論的完整數據、逐 case 分析、三模型對照都在上面各版報告裡。</p>
+    <p>測試對象為生產 Rails 專案，已匿名；題名與符號為中性化代稱。所有分數 n=1（每題跑一次），看方向不看小數點。</p>
+  </div>
+</footer>
+
+</body>
+</html>
