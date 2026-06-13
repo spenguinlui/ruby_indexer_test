@@ -199,6 +199,7 @@
   <a href="#stories"><span class="dot"></span><span class="lbl">07 case 故事</span></a>
   <a href="#verdict"><span class="dot"></span><span class="lbl">08 結論 + γ go/no-go</span></a>
   <a href="#pr3"><span class="dot"></span><span class="lbl">09 code line 追蹤</span></a>
+  <a href="#v5"><span class="dot"></span><span class="lbl">10 V5 兩階段</span></a>
 </nav>
 
 <header class="hero">
@@ -517,6 +518,91 @@
       <span class="lab">三輪總結</span>
       <p>「改 code 讓 LLM 看穿」假設在 <b>domain model 層有效</b>，在 view / context 層無效。v4e 的 Opus 結果是迄今最清楚的正向信號：找到常數 → 自動找到更深的 bug 。但對 Haiku 弱模型和設計本身歧義的 case，code 透明度已不是瓶頸。</p>
       <p>這個假設的最佳應用場景是：<b>把現有 L3 anti-pattern（特別是 polymorphic bypass + 自訂短字串 combo）的 domain model 加上顯式常數 + 注解</b>，讓中強模型（Opus/Codex 等級）能靜態得出正確答案，而不需要多輪 ripgrep 探索。</p>
+    </div>
+  </div>
+</section>
+
+<section id="v5">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">10</span><h2>V5 兩階段流水線:Haiku 爬 + Opus 想</h2></div>
+    <p class="sub">從 V4 結論推導出 V5 假設：把「找檔案」和「推理答案」拆開，用 Haiku+orchestrator 做 Stage 1（只回 JSON file list，max 45 turns），再把 file list 餵給 Opus Stage 2（不給工具，純推理）。測試三組假設：H1 品質不掉成本降、H2 動態 case 失敗、L3 退役後改善。</p>
+
+    <h3>架構</h3>
+    <div class="callout acc">
+      <span class="lab">V5 pipeline</span>
+      <p><b>Stage 1（Haiku + orchestrator）</b>：只找相關檔案，回傳 JSON file list；max 45 turns，超限用部分結果。</p>
+      <p><b>Stage 2（Opus，無工具）</b>：拿 Stage 1 的 file list 當 context，直接推理作答；max 8 turns，不能呼叫任何工具。資訊不足時明確說出缺口，不猜。</p>
+    </div>
+
+    <h3 style="margin-top:28px">機器 6 題 file-recall（V4b Opus 全跑 vs V5）</h3>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>case</th><th>V4b Opus</th><th>V5 Haiku S1</th><th>趨勢</th><th>說明</th></tr></thead>
+        <tbody>
+          <tr><td class="cid">case-1 delegate</td><td class="num">0.571</td><td class="num">0.50</td><td><span class="c-part" style="padding:1px 5px;border-radius:3px">↓</span></td><td>Stage 1 找到的 delegate chain 不完整</td></tr>
+          <tr><td class="cid">case-2 AASM</td><td class="num">1.000</td><td class="num">0.58</td><td><span class="c-bad" style="padding:1px 5px;border-radius:3px">↓↓</span></td><td>Haiku 搜尋策略比 Opus 差，漏了多個 event handler</td></tr>
+          <tr><td class="cid">case-5 Sidekiq</td><td class="num">1.000</td><td class="num"><b>1.00</b></td><td><span class="c-ok" style="padding:1px 5px;border-radius:3px">=</span></td><td>字串搜尋 ripgrep 直接命中，靜態友善</td></tr>
+          <tr><td class="cid">case-6 monkey-patch</td><td class="num">1.000</td><td class="num"><b>1.00</b></td><td><span class="c-ok" style="padding:1px 5px;border-radius:3px">=</span></td><td>同上</td></tr>
+          <tr><td class="cid">case-13 hash-dispatch</td><td class="num">0.750</td><td class="num">0.50</td><td><span class="c-part" style="padding:1px 5px;border-radius:3px">↓</span></td><td>動態 dispatch 難以靜態追蹤</td></tr>
+          <tr><td class="cid">case-14 rename</td><td class="num">1.000</td><td class="num">0.88</td><td><span class="c-part" style="padding:1px 5px;border-radius:3px">↓</span></td><td>小幅遺漏，接近 ok</td></tr>
+          <tr style="background:#f7f2e8;font-weight:600"><td>平均</td><td class="num">0.887</td><td class="num">0.743</td><td><span class="c-miss2" style="padding:1px 5px;border-radius:3px">↓14pp</span></td><td>Haiku 搜尋效率不如 Opus</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 style="margin-top:24px">value 9 題品質（V4b Opus 全跑 vs V5）</h3>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>case</th><th>V4b Opus</th><th>V5</th><th>趨勢</th><th>說明</th></tr></thead>
+        <tbody>
+          <tr><td class="cid">case-3 class_eval</td><td><span class="c-ok" style="padding:1px 5px;border-radius:3px">ok</span></td><td><span class="c-ok" style="padding:1px 5px;border-radius:3px">ok</span></td><td>=</td><td>L3 退役後找到 <code>def info:17</code>（原始 code 是 part）</td></tr>
+          <tr><td class="cid">case-4 namespace FQN</td><td><span class="c-ok" style="padding:1px 5px;border-radius:3px">ok</span></td><td><span class="c-part" style="padding:1px 5px;border-radius:3px">part</span></td><td>↓</td><td>Stage 1 找到部分但計數不完整</td></tr>
+          <tr><td class="cid">case-4A namespace</td><td><span class="c-ok" style="padding:1px 5px;border-radius:3px">ok</span></td><td><span class="c-part" style="padding:1px 5px;border-radius:3px">part</span></td><td>↓</td><td>同上</td></tr>
+          <tr><td class="cid">case-7 source_type</td><td><span class="c-ok" style="padding:1px 5px;border-radius:3px">ok</span></td><td><span class="c-part" style="padding:1px 5px;border-radius:3px">part</span></td><td>↓</td><td>找到 CUSTOM_SOURCE_TYPE_STRINGS，但 income_expense FK 設計歧義仍難判</td></tr>
+          <tr><td class="cid">case-8 FQN 計數</td><td><span class="c-ok" style="padding:1px 5px;border-radius:3px">ok</span></td><td><span class="c-ok" style="padding:1px 5px;border-radius:3px">ok</span></td><td>=</td><td>靜態友善，Stage 1 找齊</td></tr>
+          <tr><td class="cid">case-9 callback</td><td><span class="c-ok" style="padding:1px 5px;border-radius:3px">ok</span></td><td><span class="c-ok" style="padding:1px 5px;border-radius:3px">ok</span></td><td>=</td><td>callback symbol 靜態可見</td></tr>
+          <tr><td class="cid">case-10 i18n key</td><td><span class="c-part" style="padding:1px 5px;border-radius:3px">part</span></td><td><span class="c-bad" style="padding:1px 5px;border-radius:3px">bad</span></td><td>↓</td><td>Stage 1 max_turns(45) 爆掉，Stage 2 拒絕作答（graceful fail）</td></tr>
+          <tr><td class="cid">case-11 routes</td><td><span class="c-ok" style="padding:1px 5px;border-radius:3px">ok</span></td><td><span class="c-ok" style="padding:1px 5px;border-radius:3px">ok</span></td><td>=</td><td>rails-dsl 找到 routes，Stage 2 答對</td></tr>
+          <tr><td class="cid">case-12 method_missing</td><td><span class="c-ok" style="padding:1px 5px;border-radius:3px">ok</span></td><td><span class="c-ok" style="padding:1px 5px;border-radius:3px">ok</span></td><td>=</td><td>靜態可見，Stage 1 找齊</td></tr>
+          <tr style="background:#f7f2e8;font-weight:600"><td>合計</td><td>8.5/9</td><td>6.5/9</td><td><span class="c-miss2" style="padding:1px 5px;border-radius:3px">↓2.0</span></td><td></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note" style="margin-top:8px">Stage 2 ctx 全 15 題合計僅 <b>175K</b>（平均每題 12K），Opus 推理成本極低。但 Stage 1 Haiku 合計 10011K，總 ctx 反而增加（Haiku 便宜 token，總 cost $4.18 ≈ V4b Opus 全跑）。</p>
+
+    <h3 style="margin-top:24px">L3 退役 before / after（H2 驗証）</h3>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>case</th><th>L3 pattern</th><th>原始 code（V5）</th><th>L3 退役後（V5）</th><th>變化</th></tr></thead>
+        <tbody>
+          <tr>
+            <td class="cid">case-3<br><small>class_eval</small></td>
+            <td><code>LOG_LEVELS.each { class_eval("def #{log_level}...") }</code></td>
+            <td><span class="c-part" style="padding:1px 5px;border-radius:3px">part</span>「動態生成，本體在 line 20」</td>
+            <td><span class="c-ok" style="padding:1px 5px;border-radius:3px">ok</span><code>base_logger.rb:17</code> 直接命中</td>
+            <td><b style="color:var(--good)">part → ok ✓</b></td>
+          </tr>
+          <tr>
+            <td class="cid">case-7<br><small>source_type</small></td>
+            <td><code>belongs_to :source, polymorphic: true</code>（無常數）</td>
+            <td><span class="c-part" style="padding:1px 5px;border-radius:3px">part</span>推理出 silent bug，無錨點</td>
+            <td><span class="c-part" style="padding:1px 5px;border-radius:3px">part</span>找到 <code>CUSTOM_SOURCE_TYPE_STRINGS</code>，推理更清晰</td>
+            <td>part = part（設計歧義仍在）</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout" style="margin-top:18px">
+      <span class="lab">H2 驗証結論</span>
+      <p><b>case-3 完全驗証</b>：<code>class_eval</code> → 顯式 <code>def</code> 讓 Stage 1 Haiku 直接找到精確行號，Stage 2 給出 ok 答案。L3 退役對「動態方法定義」類型有效。</p>
+      <p><b>case-7 部分驗証</b>：<code>CUSTOM_SOURCE_TYPE_STRINGS</code> 讓常數變得可 grep，Stage 2 能引用它，但 <code>income_expense</code> 的「有 FK 對應但 polymorphic path 壞」設計歧義讓判斷仍困難。Part 維持，推理品質提升但 grade 沒變。</p>
+    </div>
+
+    <div class="callout warn" style="margin-top:14px">
+      <span class="lab">H1 未成立</span>
+      <p>兩階段流水線品質整體低於 Opus 全跑（8.5 → 6.5/9），machine recall 也下降（0.887 → 0.743）。根本原因：<b>Haiku Stage 1 的搜尋策略比 Opus 差</b>——它用更多 turns 找到更少的相關檔案（case-2 從 100% 掉到 58%）。Orchestrator 能補部分弱點，但無法完全彌補模型本身的判斷差距。</p>
+      <p>Stage 1 max_turns 爆掉的 case（case-10）導致 Stage 2 給出「graceful fail」（明確說缺口），比 V4b 的 part 更差——這是兩階段流水線在「Stage 1 找不到」時的特有失敗模式：<b>確定的壞，而非模糊的部分對</b>。</p>
     </div>
   </div>
 </section>
