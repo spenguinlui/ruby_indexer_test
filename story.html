@@ -189,7 +189,7 @@
 
     <h3>3 模型、兩種評分、三種搜尋策略</h3>
     <ul>
-      <li><b>模型</b>：一弱（Haiku 4.5）、一中（Opus 4.7）、一強（GPT-5.5 / Codex）。每格只跑一次（n=1）。</li>
+      <li><b>模型（3 個，涵蓋弱→強）</b>：<b>Claude Haiku 4.5</b>（弱・便宜・最常被當預設）、<b>Claude Opus 4.7</b> low-effort（中・推理最強）、<b>GPT-5.5</b>（強・爬 code 最穩，經 Codex CLI 跑）。每格只跑一次（n=1）。三個模型逐輪的角色、強弱與成本差異見下一節〈各模型怎麼分工〉。</li>
       <li><b>評分</b>：6 個「找檔題」用 <b>file-recall</b>（標準答案是檔案清單，算涵蓋率 0–1，與版面格式無關）；9 個「判讀題」由<b>單一 judge</b> 評 <code>ok / part / bad</code>（換算 1 / 0.5 / 0），固定同一個評分者避免標準漂移。</li>
       <li><b>搜尋策略</b>：<b>純 grep</b>（LLM 內建文字搜尋）、<b>靜態索引</b>（先把 Ruby 結構建索引再查，類似 rubydex / RubyLSP）、<b>orchestrator</b>（外層程式按題型自動派工具，模型不自己選）。</li>
     </ul>
@@ -235,6 +235,44 @@
       </table>
     </div>
     <p class="sub">完整三模型逐格分數、token 消耗、後續 rails-dsl 變體在 <a href="./v4b.html">V4-β.2 數據頁</a>。</p>
+
+    <h3>各模型怎麼分工：同一個平均，三種組成</h3>
+    <p class="sub">上面兩張表是 <b>3 模型平均</b>——但平均藏住了關鍵：<b>沒有一個模型全面最好，最佳選擇隨「目標」而變（省錢 / 找得全 / 推得準）</b>。三個模型在 V1→V5 一路的角色與招牌行為：</p>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>模型</th><th class="sc">output<br>token/題</th><th class="sc">$ 成本</th><th class="sc">找檔 recall<br>(V4 orch)</th><th class="sc">判讀品質</th><th>招牌行為（V1→V5）</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><b>Haiku 4.5</b><br><span class="sub">弱・便宜・常見預設</span></td>
+            <td class="sc s-lo">~6.4k<br>（最多）</td>
+            <td class="sc s-hi">最低</td>
+            <td class="sc s-hi">.96<br><span class="sub">純 grep 也最穩，recall-first 只漏 1 題</span></td>
+            <td class="sc s-mid">難題偏弱</td>
+            <td><b>性價比之王</b>——8 題「最便宜又答對」由它拿下。但 V1 一給它靜態索引就「看到工具就猛用」，case-1 不退回 grep、反而 0 命中。</td>
+          </tr>
+          <tr>
+            <td><b>Opus 4.7</b><br><span class="sub">中・low-effort</span></td>
+            <td class="sc s-hi">2.7k<br>（最少）</td>
+            <td class="sc s-lo">最貴<br>（≈Haiku 2×）</td>
+            <td class="sc s-mid">.89</td>
+            <td class="sc s-hi">最高<br>（8.5/9）</td>
+            <td><b>推理最強但帶「賭」性</b>：同樣 low-effort，case-8 只用 44 token 命中、case-1 卻燒 2.1k 拿 0。token 少 ≠ 便宜——單價高，$ 反而最貴。</td>
+          </tr>
+          <tr>
+            <td><b>GPT-5.5</b><br><span class="sub">強・Codex CLI</span></td>
+            <td class="sc s-mid">3.5–3.8k<br>（居中）</td>
+            <td class="sc">CLI 不報 $</td>
+            <td class="sc s-hi">1.0<br><span class="sub">爬 code 最穩</span></td>
+            <td class="sc s-mid">穩・無 outlier</td>
+            <td><b>不踩</b> Claude 那種「看到工具就鎖死」的陷阱；代價是<b>系統性過報</b>，且上下文餵太滿時會把 case-7 的 silent bug 合理化（part→bad）。</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout">
+      <div class="h">一句話</div>
+      <p>要省錢用 Haiku、要推得準用 Opus、要找得全用 GPT-5.5——<b>「最好的模型」是隨題型變的</b>。這也是 V5 為什麼想把「找檔」交弱模型、「推理」交強模型分工；結果見上一節：弱模型找檔是死結，分工反而不划算。</p>
+    </div>
   </div>
 </section>
 
